@@ -2,5 +2,28 @@
 name = "garmin-cli"
 version = "0.1.0"
 edition = "2024"
+description = "Garmin Connect CLI"
+
+[[bin]]
+name = "garmin"
+path = "src/main.rs"
 
 [dependencies]
+anyhow = "1"
+base64 = "0.22"
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4", features = ["derive", "env"] }
+colored = "3"
+dirs = "6"
+hmac = "0.12"
+percent-encoding = "2"
+rand = "0.9"
+regex = "1"
+reqwest = { version = "0.13", features = ["json", "cookies", "multipart", "form"] }
+url = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha1 = "0.10"
+thiserror = "2"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+urlencoding = "2"

@@ -1,0 +1,8 @@
+pub mod activities;
+pub mod auth;
+pub mod devices;
+pub mod health;
+pub mod profile;
+pub mod raw;
+pub mod summary;
+pub mod training;
