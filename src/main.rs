@@ -86,6 +86,11 @@ enum Commands {
         #[command(subcommand)]
         command: ActivityCommands,
     },
+    /// Workouts (create, schedule, push to watch)
+    Workouts {
+        #[command(subcommand)]
+        command: WorkoutCommands,
+    },
     /// Devices
     Devices {
         #[command(subcommand)]
@@ -228,9 +233,17 @@ enum ActivityCommands {
         /// Start index for pagination
         #[arg(long, default_value = "0")]
         start: u32,
+        /// Filter by activity type (e.g. running, trail_running, cycling)
+        #[arg(long, short = 't')]
+        r#type: Option<String>,
     },
     /// Get activity details
     Get {
+        /// Activity ID
+        id: u64,
+    },
+    /// Get per-km lap splits (pace, HR, elevation per lap)
+    Splits {
         /// Activity ID
         id: u64,
     },
@@ -267,6 +280,42 @@ impl std::fmt::Display for DownloadFormat {
             Self::Tcx => write!(f, "tcx"),
         }
     }
+}
+
+#[derive(Subcommand)]
+enum WorkoutCommands {
+    /// List saved workouts
+    List {
+        /// Max workouts to return
+        #[arg(long, default_value = "20")]
+        limit: u32,
+        /// Start index for pagination
+        #[arg(long, default_value = "0")]
+        start: u32,
+    },
+    /// Get workout details
+    Get {
+        /// Workout ID
+        id: u64,
+    },
+    /// Create workout from JSON file
+    Create {
+        /// Path to workout JSON file
+        #[arg(long, short)]
+        file: String,
+    },
+    /// Schedule workout on a date
+    Schedule {
+        /// Workout ID
+        id: u64,
+        /// Date (YYYY-MM-DD)
+        date: String,
+    },
+    /// Delete a workout
+    Delete {
+        /// Workout ID
+        id: u64,
+    },
 }
 
 #[derive(Subcommand)]
@@ -376,11 +425,19 @@ async fn main() -> anyhow::Result<()> {
         Commands::Activities { command } => {
             let client = GarminClient::new(require_auth()?)?;
             match command {
-                ActivityCommands::List { limit, start } => {
-                    commands::activities::list(&client, &output, limit, start).await
+                ActivityCommands::List {
+                    limit,
+                    start,
+                    r#type,
+                } => {
+                    commands::activities::list(&client, &output, limit, start, r#type.as_deref())
+                        .await
                 }
                 ActivityCommands::Get { id } => {
                     commands::activities::get(&client, &output, id).await
+                }
+                ActivityCommands::Splits { id } => {
+                    commands::activities::splits(&client, &output, id).await
                 }
                 ActivityCommands::Download {
                     id,
@@ -392,6 +449,25 @@ async fn main() -> anyhow::Result<()> {
                 }
                 ActivityCommands::Upload { file } => {
                     commands::activities::upload(&client, &output, &file).await
+                }
+            }
+        }
+
+        Commands::Workouts { command } => {
+            let client = GarminClient::new(require_auth()?)?;
+            match command {
+                WorkoutCommands::List { limit, start } => {
+                    commands::workouts::list(&client, &output, limit, start).await
+                }
+                WorkoutCommands::Get { id } => commands::workouts::get(&client, &output, id).await,
+                WorkoutCommands::Create { file } => {
+                    commands::workouts::create(&client, &output, &file).await
+                }
+                WorkoutCommands::Schedule { id, date } => {
+                    commands::workouts::schedule(&client, &output, id, &date).await
+                }
+                WorkoutCommands::Delete { id } => {
+                    commands::workouts::delete(&client, &output, id).await
                 }
             }
         }

@@ -214,6 +214,31 @@ impl GarminClient {
         Ok(resp.json().await?)
     }
 
+    /// DELETE request with no response body expected
+    pub async fn delete(&self, path: &str) -> Result<()> {
+        let token = self.access_token().await?;
+        let url = if path.starts_with("http") {
+            path.to_string()
+        } else {
+            format!("{CONNECT_API}{path}")
+        };
+
+        let resp = self
+            .http
+            .delete(&url)
+            .header(AUTHORIZATION, format!("Bearer {token}"))
+            .send()
+            .await?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(Error::Api(format!("{status}: {body}")));
+        }
+
+        Ok(())
+    }
+
     /// Get display name, fetching from profile if not cached
     pub async fn display_name(&self) -> Result<String> {
         {

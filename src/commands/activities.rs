@@ -50,9 +50,18 @@ impl HumanReadable for ActivitySummary {
     }
 }
 
-pub async fn list(client: &GarminClient, output: &Output, limit: u32, start: u32) -> Result<()> {
-    let path =
+pub async fn list(
+    client: &GarminClient,
+    output: &Output,
+    limit: u32,
+    start: u32,
+    activity_type: Option<&str>,
+) -> Result<()> {
+    let mut path =
         format!("/activitylist-service/activities/search/activities?limit={limit}&start={start}");
+    if let Some(t) = activity_type {
+        path.push_str(&format!("&activityType={t}"));
+    }
     let activities: Vec<serde_json::Value> = client.get_json(&path).await?;
 
     let summaries: Vec<ActivitySummary> = activities
@@ -106,6 +115,13 @@ pub async fn get(client: &GarminClient, output: &Output, id: u64) -> Result<()> 
         };
         output.print(&summary);
     }
+    Ok(())
+}
+
+pub async fn splits(client: &GarminClient, _output: &Output, id: u64) -> Result<()> {
+    let path = format!("/activity-service/activity/{id}/splits");
+    let v: serde_json::Value = client.get_json(&path).await?;
+    println!("{}", serde_json::to_string_pretty(&v)?);
     Ok(())
 }
 

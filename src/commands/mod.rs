@@ -6,3 +6,4 @@ pub mod profile;
 pub mod raw;
 pub mod summary;
 pub mod training;
+pub mod workouts;
