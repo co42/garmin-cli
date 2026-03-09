@@ -1,7 +1,7 @@
 .PHONY: build release test clean
 
 VERSION ?= $(shell grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
-HOMEBREW_TAP := ../homebrew-garmin-cli
+HOMEBREW_TAP := ~/self/homebrew-tap
 REPO := co42/garmin-cli
 
 build:
@@ -51,4 +51,4 @@ release:
 	@echo "=== Release v$(VERSION) complete! ==="
 	@echo "  - Tagged and pushed garmin-cli"
 	@echo "  - GitHub Actions built binaries"
-	@echo "  - Updated and pushed homebrew-garmin-cli"
+	@echo "  - Updated and pushed homebrew-tap"
