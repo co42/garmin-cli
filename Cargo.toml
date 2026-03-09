@@ -3,6 +3,8 @@ name = "garmin-cli"
 version = "0.1.0"
 edition = "2024"
 description = "Garmin Connect CLI"
+license = "MIT"
+repository = "https://github.com/co42/garmin-cli"
 
 [[bin]]
 name = "garmin"
