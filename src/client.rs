@@ -4,7 +4,7 @@ use reqwest::header::AUTHORIZATION;
 use serde::de::DeserializeOwned;
 use std::sync::Mutex;
 
-const CONNECT_API: &str = "https://connect.garmin.com";
+const CONNECT_API: &str = "https://connectapi.garmin.com";
 const CLIENT_USER_AGENT: &str = "com.garmin.android.apps.connectmobile";
 
 pub struct GarminClient {
@@ -223,7 +223,8 @@ impl GarminClient {
             }
         }
 
-        let profile: serde_json::Value = self.get_json("/userprofile-service/usersummary").await?;
+        let profile: serde_json::Value =
+            self.get_json("/userprofile-service/socialProfile").await?;
         let name = profile["displayName"]
             .as_str()
             .ok_or_else(|| Error::Api("displayName not found in profile".into()))?

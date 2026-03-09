@@ -32,13 +32,19 @@ impl HumanReadable for Profile {
 }
 
 pub async fn show(client: &GarminClient, output: &Output) -> Result<()> {
-    let v: serde_json::Value = client.get_json("/userprofile-service/usersummary").await?;
+    let v: serde_json::Value = client
+        .get_json("/userprofile-service/socialProfile")
+        .await?;
     let profile = Profile {
-        display_name: v["displayName"].as_str().unwrap_or("").into(),
+        display_name: v["userProfileFullName"]
+            .as_str()
+            .or(v["fullName"].as_str())
+            .unwrap_or("")
+            .into(),
         user_name: v["userName"].as_str().map(Into::into),
-        email: v["primaryEmail"].as_str().map(Into::into),
-        locale: v["locale"].as_str().map(Into::into),
-        measurement_system: v["measurementSystem"].as_str().map(Into::into),
+        email: None, // not in socialProfile
+        locale: None,
+        measurement_system: None,
     };
     output.print(&profile);
     Ok(())

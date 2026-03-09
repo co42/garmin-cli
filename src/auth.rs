@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const SSO_BASE: &str = "https://sso.garmin.com";
-const CONNECT_BASE: &str = "https://connect.garmin.com";
+const CONNECT_API: &str = "https://connectapi.garmin.com";
 const OAUTH_CONSUMER_URL: &str = "https://thegarth.s3.amazonaws.com/oauth_consumer.json";
 
 const SSO_USER_AGENT: &str = "GCM-iOS-5.19.1.2";
@@ -107,23 +107,44 @@ async fn sso_login(email: &str, password: &str) -> Result<String> {
     let jar = std::sync::Arc::new(reqwest::cookie::Jar::default());
     let client = reqwest::Client::builder()
         .cookie_provider(jar)
-        .redirect(reqwest::redirect::Policy::none())
         .user_agent(SSO_USER_AGENT)
         .build()?;
 
-    let qs = "id=gauth-widget&embedWidget=true&gauthHost=https%3A%2F%2Fsso.garmin.com";
-    let embed_url = format!("{SSO_BASE}/sso/embed?{qs}");
+    let sso = format!("{SSO_BASE}/sso");
+    let sso_embed = format!("{sso}/embed");
 
-    // GET /sso/embed - sets cookies
-    client.get(&embed_url).send().await?;
+    // Step 1: GET /sso/embed - sets cookies
+    let embed_params: &[(&str, &str)] = &[
+        ("id", "gauth-widget"),
+        ("embedWidget", "true"),
+        ("gauthHost", &sso),
+    ];
+    client.get(&sso_embed).query(embed_params).send().await?;
 
-    // GET /sso/signin - get CSRF token
-    let signin_url = format!("{SSO_BASE}/sso/signin?{qs}");
-    let signin_page = client.get(&signin_url).send().await?.text().await?;
+    // Step 2: GET /sso/signin - get CSRF token
+    // signin uses richer params than embed
+    let signin_params: &[(&str, &str)] = &[
+        ("id", "gauth-widget"),
+        ("embedWidget", "true"),
+        ("gauthHost", &sso_embed),
+        ("service", &sso_embed),
+        ("source", &sso_embed),
+        ("redirectAfterAccountLoginUrl", &sso_embed),
+        ("redirectAfterAccountCreationUrl", &sso_embed),
+    ];
+    let signin_url = format!("{SSO_BASE}/sso/signin");
+    let signin_resp = client
+        .get(&signin_url)
+        .query(signin_params)
+        .header("referer", &sso_embed)
+        .send()
+        .await?;
+    let signin_resp_url = signin_resp.url().to_string();
+    let signin_page = signin_resp.text().await?;
 
     let csrf = extract_csrf(&signin_page)?;
 
-    // POST /sso/signin - submit credentials
+    // Step 3: POST /sso/signin - submit credentials
     let form: &[(&str, &str)] = &[
         ("username", email),
         ("password", password),
@@ -131,12 +152,51 @@ async fn sso_login(email: &str, password: &str) -> Result<String> {
         ("embed", "true"),
     ];
 
-    let resp = client.post(&signin_url).form(form).send().await?;
-
+    let resp = client
+        .post(&signin_url)
+        .query(signin_params)
+        .header("referer", &signin_resp_url)
+        .form(form)
+        .send()
+        .await?;
+    let post_url = resp.url().to_string();
     let body = resp.text().await?;
 
-    if body.contains("verifyMFA") || body.contains("MFA") {
-        return Err(Error::MfaRequired);
+    let title = extract_title(&body).unwrap_or_default();
+
+    // Handle MFA
+    if title.contains("MFA") {
+        let csrf = extract_csrf(&body)?;
+        eprint!("MFA code: ");
+        let mut mfa_code = String::new();
+        std::io::stdin().read_line(&mut mfa_code)?;
+        let mfa_code = mfa_code.trim();
+
+        let mfa_form: &[(&str, &str)] = &[
+            ("mfa-code", mfa_code),
+            ("embed", "true"),
+            ("_csrf", &csrf),
+            ("fromPage", "setupEnterMfaCode"),
+        ];
+
+        let mfa_url = format!("{SSO_BASE}/sso/verifyMFA/loginEnterMfaCode");
+        let resp = client
+            .post(&mfa_url)
+            .query(signin_params)
+            .header("referer", &post_url)
+            .form(mfa_form)
+            .send()
+            .await?;
+        let body = resp.text().await?;
+        let title = extract_title(&body).unwrap_or_default();
+        if title != "Success" {
+            return Err(Error::Auth(format!("MFA verification failed: {title}")));
+        }
+        return extract_ticket(&body);
+    }
+
+    if title != "Success" {
+        return Err(Error::Auth(format!("SSO login failed: {title}")));
     }
 
     extract_ticket(&body)
@@ -148,6 +208,13 @@ fn extract_csrf(html: &str) -> Result<String> {
         .and_then(|c| c.get(1))
         .map(|m| m.as_str().to_string())
         .ok_or_else(|| Error::Auth("CSRF token not found in SSO page".into()))
+}
+
+fn extract_title(html: &str) -> Option<String> {
+    let re = regex::Regex::new(r"<title>(.+?)</title>").unwrap();
+    re.captures(html)
+        .and_then(|c| c.get(1))
+        .map(|m| m.as_str().to_string())
 }
 
 fn extract_ticket(html: &str) -> Result<String> {
@@ -184,11 +251,12 @@ async fn exchange_ticket_for_oauth1(
         .user_agent(CONNECT_USER_AGENT)
         .build()?;
 
-    let base_path = format!("{CONNECT_BASE}/oauth-service/oauth/preauthorized");
+    let base_path = format!("{CONNECT_API}/oauth-service/oauth/preauthorized");
     let login_url = format!("{SSO_BASE}/sso/embed");
     let encoded_ticket = urlencoding::encode(ticket);
-    let url =
-        format!("{base_path}?ticket={encoded_ticket}&login-url={login_url}&acceptTheTerms=true");
+    let url = format!(
+        "{base_path}?ticket={encoded_ticket}&login-url={login_url}&accepts-mfa-tokens=true"
+    );
 
     let auth_header = oauth1_header(
         "GET",
@@ -196,7 +264,7 @@ async fn exchange_ticket_for_oauth1(
         &[
             ("ticket", ticket),
             ("login-url", &login_url),
-            ("acceptTheTerms", "true"),
+            ("accepts-mfa-tokens", "true"),
         ],
         &consumer.consumer_key,
         &consumer.consumer_secret,
@@ -210,7 +278,16 @@ async fn exchange_ticket_for_oauth1(
         .send()
         .await?;
 
+    let status = resp.status();
     let body = resp.text().await?;
+
+    if !status.is_success() {
+        return Err(Error::Auth(format!(
+            "OAuth1 preauthorized failed ({status}): {}",
+            &body[..body.len().min(200)]
+        )));
+    }
+
     let params: Vec<(String, String)> = url::form_urlencoded::parse(body.as_bytes())
         .map(|(k, v)| (k.to_string(), v.to_string()))
         .collect();
@@ -240,7 +317,7 @@ async fn exchange_oauth1_for_oauth2(
         .user_agent(CONNECT_USER_AGENT)
         .build()?;
 
-    let url = format!("{CONNECT_BASE}/oauth-service/oauth/exchange/user/2.0");
+    let url = format!("{CONNECT_API}/oauth-service/oauth/exchange/user/2.0");
 
     let auth_header = oauth1_header(
         "POST",
@@ -317,11 +394,36 @@ fn oauth1_header(
             .collect()
     };
 
+    build_oauth1_header(
+        method,
+        base_url,
+        params,
+        consumer_key,
+        consumer_secret,
+        token,
+        token_secret,
+        &timestamp,
+        &nonce,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_oauth1_header(
+    method: &str,
+    base_url: &str,
+    params: &[(&str, &str)],
+    consumer_key: &str,
+    consumer_secret: &str,
+    token: Option<&str>,
+    token_secret: Option<&str>,
+    timestamp: &str,
+    nonce: &str,
+) -> String {
     let mut oauth_params: BTreeMap<String, String> = BTreeMap::new();
     oauth_params.insert("oauth_consumer_key".into(), consumer_key.into());
-    oauth_params.insert("oauth_nonce".into(), nonce);
+    oauth_params.insert("oauth_nonce".into(), nonce.to_string());
     oauth_params.insert("oauth_signature_method".into(), "HMAC-SHA1".into());
-    oauth_params.insert("oauth_timestamp".into(), timestamp);
+    oauth_params.insert("oauth_timestamp".into(), timestamp.to_string());
     oauth_params.insert("oauth_version".into(), "1.0".into());
     if let Some(t) = token {
         oauth_params.insert("oauth_token".into(), t.into());
@@ -372,6 +474,42 @@ fn oauth1_header(
     format!("OAuth {header}")
 }
 
+/// RFC 5849 percent encoding: encode everything except unreserved chars (A-Z a-z 0-9 - . _ ~)
+const OAUTH_ENCODE_SET: &percent_encoding::AsciiSet = &percent_encoding::NON_ALPHANUMERIC
+    .remove(b'-')
+    .remove(b'.')
+    .remove(b'_')
+    .remove(b'~');
+
 fn percent_encode(s: &str) -> String {
-    percent_encoding::utf8_percent_encode(s, percent_encoding::NON_ALPHANUMERIC).to_string()
+    percent_encoding::utf8_percent_encode(s, OAUTH_ENCODE_SET).to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_oauth1_signature() {
+        let header = build_oauth1_header(
+            "GET",
+            "https://connectapi.garmin.com/oauth-service/oauth/preauthorized",
+            &[
+                ("ticket", "ST-123456-test"),
+                ("login-url", "https://sso.garmin.com/sso/embed"),
+                ("accepts-mfa-tokens", "true"),
+            ],
+            "fc3e99d2-118c-44b8-8ae3-03370dde24c0",
+            "E08WAR897WEy2knn7aFBrvegVAf0AFdWBBF",
+            None,
+            None,
+            "1234567890",
+            "testnonce123",
+        );
+        // Python reference: G5Ts96qQYZNkQv7x7j4gyEFS/oo=
+        assert!(
+            header.contains("G5Ts96qQYZNkQv7x7j4gyEFS%2Foo%3D"),
+            "Signature mismatch in header: {header}"
+        );
+    }
 }

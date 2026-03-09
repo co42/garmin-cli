@@ -36,7 +36,14 @@ pub fn status(output: &Output) -> Result<()> {
         .map(|dt| dt.format("%Y-%m-%d %H:%M UTC").to_string())
         .unwrap_or_else(|| "unknown".into());
 
-    if expired {
+    if output.is_json() {
+        let status = serde_json::json!({
+            "authenticated": true,
+            "expired": expired,
+            "expires_at": expires,
+        });
+        println!("{}", serde_json::to_string_pretty(&status).unwrap());
+    } else if expired {
         output.status(&format!(
             "Token expired at {expires} (will auto-refresh on next request)"
         ));

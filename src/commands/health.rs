@@ -1,8 +1,6 @@
 use crate::client::GarminClient;
 use crate::error::Result;
-use crate::output::{HumanReadable, Output};
-use colored::Colorize;
-use serde::Serialize;
+use crate::output::Output;
 
 fn today() -> String {
     chrono::Local::now().format("%Y-%m-%d").to_string()
@@ -18,98 +16,51 @@ fn parse_date(s: &str) -> std::result::Result<chrono::NaiveDate, crate::error::E
         .map_err(|e| crate::error::Error::Api(format!("Invalid date: {e}")))
 }
 
-// Generic wrapper for single-date health data -- just output the raw JSON
-// with a date label. Most health endpoints return rich nested data that
-// doesn't benefit from cherry-picking into typed structs.
+// Most health endpoints return rich nested JSON. We output it directly
+// rather than trying to cherry-pick fields into typed structs.
 
-#[derive(Debug, Serialize)]
-struct HealthData {
-    date: String,
-    #[serde(flatten)]
-    data: serde_json::Value,
-}
-
-impl HumanReadable for HealthData {
-    fn print_human(&self) {
-        println!("{}", self.date.bold());
-        // Pretty-print the nested JSON for human consumption
-        if let Some(obj) = self.data.as_object() {
-            for (k, v) in obj {
-                if !v.is_null() {
-                    println!("  {}: {}", k.dimmed(), format_value(v));
-                }
-            }
-        }
-        println!();
-    }
-}
-
-fn format_value(v: &serde_json::Value) -> String {
-    match v {
-        serde_json::Value::Number(n) => {
-            if let Some(f) = n.as_f64() {
-                if f == f.floor() {
-                    format!("{}", f as i64)
-                } else {
-                    format!("{:.1}", f)
-                }
-            } else {
-                n.to_string()
-            }
-        }
-        serde_json::Value::String(s) => s.clone(),
-        serde_json::Value::Bool(b) => b.to_string(),
-        serde_json::Value::Null => "\u{2014}".into(),
-        _ => serde_json::to_string(v).unwrap_or_default(),
-    }
+fn print_value(v: &serde_json::Value) {
+    println!("{}", serde_json::to_string_pretty(v).unwrap_or_default());
 }
 
 async fn fetch_health_multi(
     client: &GarminClient,
-    output: &Output,
+    _output: &Output,
     date: Option<&str>,
     days: Option<u32>,
     path_fn: impl Fn(&str) -> String,
-    title: &str,
 ) -> Result<()> {
     let (end_date, days) = date_range(date, days);
     let end = parse_date(&end_date)?;
-    let mut results = Vec::new();
 
-    for i in 0..days {
-        let d = end - chrono::Duration::days(i as i64);
-        let date_str = d.format("%Y-%m-%d").to_string();
-        let path = path_fn(&date_str);
+    if days == 1 {
+        let path = path_fn(&end_date);
         let v: serde_json::Value = client.get_json(&path).await?;
-        results.push(HealthData {
-            date: date_str,
-            data: v,
-        });
-    }
-
-    results.reverse();
-    if results.len() == 1 {
-        output.print(&results[0]);
+        print_value(&v);
     } else {
-        output.print_list(&results, title);
+        let mut results = Vec::new();
+        for i in (0..days).rev() {
+            let d = end - chrono::Duration::days(i as i64);
+            let date_str = d.format("%Y-%m-%d").to_string();
+            let path = path_fn(&date_str);
+            let v: serde_json::Value = client.get_json(&path).await?;
+            results.push(v);
+        }
+        print_value(&serde_json::Value::Array(results));
     }
     Ok(())
 }
 
 async fn fetch_health_single(
     client: &GarminClient,
-    output: &Output,
+    _output: &Output,
     date: Option<&str>,
     path_fn: impl Fn(&str) -> String,
 ) -> Result<()> {
     let date_str = date.map(String::from).unwrap_or_else(today);
     let path = path_fn(&date_str);
     let v: serde_json::Value = client.get_json(&path).await?;
-    let data = HealthData {
-        date: date_str,
-        data: v,
-    };
-    output.print(&data);
+    print_value(&v);
     Ok(())
 }
 
@@ -120,14 +71,9 @@ pub async fn sleep(
     days: Option<u32>,
 ) -> Result<()> {
     let display_name = client.display_name().await?;
-    fetch_health_multi(
-        client,
-        output,
-        date,
-        days,
-        |d| format!("/wellness-service/wellness/dailySleepData/{display_name}?date={d}"),
-        "Sleep",
-    )
+    fetch_health_multi(client, output, date, days, |d| {
+        format!("/wellness-service/wellness/dailySleepData/{display_name}?date={d}")
+    })
     .await
 }
 
@@ -137,14 +83,9 @@ pub async fn stress(
     date: Option<&str>,
     days: Option<u32>,
 ) -> Result<()> {
-    fetch_health_multi(
-        client,
-        output,
-        date,
-        days,
-        |d| format!("/wellness-service/wellness/dailyStress/{d}"),
-        "Stress",
-    )
+    fetch_health_multi(client, output, date, days, |d| {
+        format!("/wellness-service/wellness/dailyStress/{d}")
+    })
     .await
 }
 
@@ -155,14 +96,9 @@ pub async fn heart_rate(
     days: Option<u32>,
 ) -> Result<()> {
     let display_name = client.display_name().await?;
-    fetch_health_multi(
-        client,
-        output,
-        date,
-        days,
-        |d| format!("/wellness-service/wellness/dailyHeartRate/{display_name}?date={d}"),
-        "Heart Rate",
-    )
+    fetch_health_multi(client, output, date, days, |d| {
+        format!("/wellness-service/wellness/dailyHeartRate/{display_name}?date={d}")
+    })
     .await
 }
 
@@ -171,8 +107,9 @@ pub async fn body_battery(
     output: &Output,
     date: Option<&str>,
 ) -> Result<()> {
+    // Body battery data is embedded in the stress endpoint response
     fetch_health_single(client, output, date, |d| {
-        format!("/wellness-service/wellness/bodyBattery/dates/{d}?startDate={d}&endDate={d}")
+        format!("/wellness-service/wellness/dailyStress/{d}")
     })
     .await
 }
@@ -183,14 +120,9 @@ pub async fn hrv(
     date: Option<&str>,
     days: Option<u32>,
 ) -> Result<()> {
-    fetch_health_multi(
-        client,
-        output,
-        date,
-        days,
-        |d| format!("/hrv-service/hrv/{d}"),
-        "HRV",
-    )
+    fetch_health_multi(client, output, date, days, |d| {
+        format!("/hrv-service/hrv/{d}")
+    })
     .await
 }
 
@@ -200,14 +132,9 @@ pub async fn steps(
     date: Option<&str>,
     days: Option<u32>,
 ) -> Result<()> {
-    fetch_health_multi(
-        client,
-        output,
-        date,
-        days,
-        |d| format!("/usersummary-service/stats/steps/daily/{d}/{d}"),
-        "Steps",
-    )
+    fetch_health_multi(client, output, date, days, |d| {
+        format!("/usersummary-service/stats/steps/daily/{d}/{d}")
+    })
     .await
 }
 
@@ -217,14 +144,9 @@ pub async fn weight(
     date: Option<&str>,
     days: Option<u32>,
 ) -> Result<()> {
-    fetch_health_multi(
-        client,
-        output,
-        date,
-        days,
-        |d| format!("/weight-service/weight/dateRange?startDate={d}&endDate={d}"),
-        "Weight",
-    )
+    fetch_health_multi(client, output, date, days, |d| {
+        format!("/weight-service/weight/dateRange?startDate={d}&endDate={d}")
+    })
     .await
 }
 
@@ -234,20 +156,15 @@ pub async fn hydration(
     date: Option<&str>,
     days: Option<u32>,
 ) -> Result<()> {
-    fetch_health_multi(
-        client,
-        output,
-        date,
-        days,
-        |d| format!("/usersummary-service/usersummary/hydration/daily/{d}"),
-        "Hydration",
-    )
+    fetch_health_multi(client, output, date, days, |d| {
+        format!("/usersummary-service/usersummary/hydration/daily/{d}")
+    })
     .await
 }
 
 pub async fn spo2(client: &GarminClient, output: &Output, date: Option<&str>) -> Result<()> {
     fetch_health_single(client, output, date, |d| {
-        format!("/wellness-service/wellness/pulse-ox/daily/{d}/{d}")
+        format!("/wellness-service/wellness/dailySpo2/{d}")
     })
     .await
 }
@@ -265,13 +182,8 @@ pub async fn intensity_minutes(
     date: Option<&str>,
     days: Option<u32>,
 ) -> Result<()> {
-    fetch_health_multi(
-        client,
-        output,
-        date,
-        days,
-        |d| format!("/wellness-service/wellness/dailyIntensityMinutes?calendarDate={d}"),
-        "Intensity Minutes",
-    )
+    fetch_health_multi(client, output, date, days, |d| {
+        format!("/usersummary-service/stats/im/daily/{d}/{d}")
+    })
     .await
 }
