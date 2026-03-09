@@ -5,13 +5,20 @@ Garmin Connect CLI.
 ## Install
 
 ```bash
+brew install co42/tap/garmin
+```
+
+Or from source:
+
+```bash
 cargo install --git https://github.com/co42/garmin-cli
 ```
 
 ## Auth
 
 ```bash
-garmin auth login --username you@example.com --password hunter2
+# Interactive (prompts for email and password)
+garmin auth login
 
 # Or via environment variables
 export GARMIN_EMAIL="you@example.com"
