@@ -1,9 +1,12 @@
 pub mod activities;
 pub mod auth;
+pub mod calendar;
 pub mod devices;
+pub mod gear;
 pub mod health;
 pub mod profile;
 pub mod raw;
+pub mod records;
 pub mod summary;
 pub mod training;
 pub mod workouts;

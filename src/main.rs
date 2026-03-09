@@ -76,7 +76,7 @@ enum Commands {
         #[command(subcommand)]
         command: HealthCommands,
     },
-    /// Training status and readiness
+    /// Training status, readiness, and performance metrics
     Training {
         #[command(subcommand)]
         command: TrainingCommands,
@@ -90,6 +90,22 @@ enum Commands {
     Workouts {
         #[command(subcommand)]
         command: WorkoutCommands,
+    },
+    /// Gear (shoes, bikes, etc.)
+    Gear {
+        #[command(subcommand)]
+        command: GearCommands,
+    },
+    /// Personal records
+    Records,
+    /// Calendar (scheduled workouts, activities)
+    Calendar {
+        /// Year (defaults to current)
+        #[arg(long)]
+        year: Option<u32>,
+        /// Month (1-12, defaults to current)
+        #[arg(long)]
+        month: Option<u32>,
     },
     /// Devices
     Devices {
@@ -129,6 +145,14 @@ enum HealthCommands {
     Sleep {
         #[arg(long)]
         date: Option<String>,
+        #[arg(long)]
+        days: Option<u32>,
+    },
+    /// Sleep score trends
+    SleepScores {
+        #[arg(long)]
+        date: Option<String>,
+        /// Number of days (default 7)
         #[arg(long)]
         days: Option<u32>,
     },
@@ -214,13 +238,36 @@ enum TrainingCommands {
         #[arg(long)]
         days: Option<u32>,
     },
-    /// Training scores (endurance, VO2max, etc.)
+    /// Training scores (VO2max, maxmet)
     Scores {
         #[arg(long)]
         date: Option<String>,
         #[arg(long)]
         days: Option<u32>,
     },
+    /// Race predictions (5K, 10K, half, marathon)
+    RacePredictions,
+    /// Endurance score
+    EnduranceScore {
+        #[arg(long)]
+        date: Option<String>,
+        #[arg(long)]
+        days: Option<u32>,
+    },
+    /// Hill score
+    HillScore {
+        #[arg(long)]
+        date: Option<String>,
+        #[arg(long)]
+        days: Option<u32>,
+    },
+    /// Fitness age
+    FitnessAge {
+        #[arg(long)]
+        date: Option<String>,
+    },
+    /// Lactate threshold (speed and HR)
+    LactateThreshold,
 }
 
 #[derive(Subcommand)]
@@ -237,13 +284,23 @@ enum ActivityCommands {
         #[arg(long, short = 't')]
         r#type: Option<String>,
     },
-    /// Get activity details
+    /// Get activity summary
     Get {
+        /// Activity ID
+        id: u64,
+    },
+    /// Get full activity details (metrics, polyline, time-series)
+    Details {
         /// Activity ID
         id: u64,
     },
     /// Get per-km lap splits (pace, HR, elevation per lap)
     Splits {
+        /// Activity ID
+        id: u64,
+    },
+    /// Get HR time in zones for an activity
+    HrZones {
         /// Activity ID
         id: u64,
     },
@@ -319,6 +376,24 @@ enum WorkoutCommands {
 }
 
 #[derive(Subcommand)]
+enum GearCommands {
+    /// List all gear
+    List,
+    /// Get gear usage statistics
+    Stats {
+        /// Gear UUID
+        uuid: String,
+    },
+    /// Link gear to an activity
+    Link {
+        /// Gear UUID
+        uuid: String,
+        /// Activity ID
+        activity_id: u64,
+    },
+}
+
+#[derive(Subcommand)]
 enum DeviceCommands {
     /// List registered devices
     List,
@@ -373,6 +448,9 @@ async fn main() -> anyhow::Result<()> {
                 HealthCommands::Sleep { date, days } => {
                     commands::health::sleep(&client, &output, date.as_deref(), days).await
                 }
+                HealthCommands::SleepScores { date, days } => {
+                    commands::health::sleep_scores(&client, &output, date.as_deref(), days).await
+                }
                 HealthCommands::Stress { date, days } => {
                     commands::health::stress(&client, &output, date.as_deref(), days).await
                 }
@@ -419,6 +497,22 @@ async fn main() -> anyhow::Result<()> {
                 TrainingCommands::Scores { date, days } => {
                     commands::training::scores(&client, &output, date.as_deref(), days).await
                 }
+                TrainingCommands::RacePredictions => {
+                    commands::training::race_predictions(&client, &output).await
+                }
+                TrainingCommands::EnduranceScore { date, days } => {
+                    commands::training::endurance_score(&client, &output, date.as_deref(), days)
+                        .await
+                }
+                TrainingCommands::HillScore { date, days } => {
+                    commands::training::hill_score(&client, &output, date.as_deref(), days).await
+                }
+                TrainingCommands::FitnessAge { date } => {
+                    commands::training::fitness_age(&client, &output, date.as_deref()).await
+                }
+                TrainingCommands::LactateThreshold => {
+                    commands::training::lactate_threshold(&client, &output).await
+                }
             }
         }
 
@@ -436,8 +530,14 @@ async fn main() -> anyhow::Result<()> {
                 ActivityCommands::Get { id } => {
                     commands::activities::get(&client, &output, id).await
                 }
+                ActivityCommands::Details { id } => {
+                    commands::activities::details(&client, &output, id).await
+                }
                 ActivityCommands::Splits { id } => {
                     commands::activities::splits(&client, &output, id).await
+                }
+                ActivityCommands::HrZones { id } => {
+                    commands::activities::hr_zones(&client, &output, id).await
                 }
                 ActivityCommands::Download {
                     id,
@@ -470,6 +570,29 @@ async fn main() -> anyhow::Result<()> {
                     commands::workouts::delete(&client, &output, id).await
                 }
             }
+        }
+
+        Commands::Gear { command } => {
+            let client = GarminClient::new(require_auth()?)?;
+            match command {
+                GearCommands::List => commands::gear::list(&client, &output).await,
+                GearCommands::Stats { uuid } => {
+                    commands::gear::stats(&client, &output, &uuid).await
+                }
+                GearCommands::Link { uuid, activity_id } => {
+                    commands::gear::link(&client, &output, &uuid, activity_id).await
+                }
+            }
+        }
+
+        Commands::Records => {
+            let client = GarminClient::new(require_auth()?)?;
+            commands::records::list(&client, &output).await
+        }
+
+        Commands::Calendar { year, month } => {
+            let client = GarminClient::new(require_auth()?)?;
+            commands::calendar::month(&client, &output, year, month).await
         }
 
         Commands::Devices { command } => {

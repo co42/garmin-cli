@@ -118,6 +118,20 @@ pub async fn get(client: &GarminClient, output: &Output, id: u64) -> Result<()> 
     Ok(())
 }
 
+pub async fn details(client: &GarminClient, _output: &Output, id: u64) -> Result<()> {
+    let path = format!("/activity-service/activity/{id}/details");
+    let v: serde_json::Value = client.get_json(&path).await?;
+    println!("{}", serde_json::to_string_pretty(&v)?);
+    Ok(())
+}
+
+pub async fn hr_zones(client: &GarminClient, _output: &Output, id: u64) -> Result<()> {
+    let path = format!("/activity-service/activity/{id}/hrTimeInZones");
+    let v: serde_json::Value = client.get_json(&path).await?;
+    println!("{}", serde_json::to_string_pretty(&v)?);
+    Ok(())
+}
+
 pub async fn splits(client: &GarminClient, _output: &Output, id: u64) -> Result<()> {
     let path = format!("/activity-service/activity/{id}/splits");
     let v: serde_json::Value = client.get_json(&path).await?;

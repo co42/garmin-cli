@@ -187,3 +187,19 @@ pub async fn intensity_minutes(
     })
     .await
 }
+
+pub async fn sleep_scores(
+    client: &GarminClient,
+    _output: &Output,
+    date: Option<&str>,
+    days: Option<u32>,
+) -> Result<()> {
+    let (end_date, days) = date_range(date, days.or(Some(7)));
+    let end = parse_date(&end_date)?;
+    let start = end - chrono::Duration::days(days as i64 - 1);
+    let start_str = start.format("%Y-%m-%d").to_string();
+    let path = format!("/wellness-service/stats/daily/sleep/score/{start_str}/{end_date}");
+    let v: serde_json::Value = client.get_json(&path).await?;
+    print_value(&v);
+    Ok(())
+}
