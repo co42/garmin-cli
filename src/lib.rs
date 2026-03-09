@@ -4,6 +4,7 @@ pub mod commands;
 pub mod config;
 pub mod error;
 pub mod output;
+pub mod util;
 
 pub use client::GarminClient;
 pub use error::{Error, Result};

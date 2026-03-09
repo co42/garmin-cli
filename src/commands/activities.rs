@@ -60,7 +60,7 @@ pub async fn list(
     let mut path =
         format!("/activitylist-service/activities/search/activities?limit={limit}&start={start}");
     if let Some(t) = activity_type {
-        path.push_str(&format!("&activityType={t}"));
+        path.push_str(&format!("&activityType={}", urlencoding::encode(t)));
     }
     let activities: Vec<serde_json::Value> = client.get_json(&path).await?;
 
@@ -95,7 +95,7 @@ pub async fn get(client: &GarminClient, output: &Output, id: u64) -> Result<()> 
     let v: serde_json::Value = client.get_json(&path).await?;
 
     if output.is_json() {
-        println!("{}", serde_json::to_string_pretty(&v)?);
+        output.print_value(&v);
     } else {
         // Summary view for human output
         let summary = ActivitySummary {
@@ -118,24 +118,24 @@ pub async fn get(client: &GarminClient, output: &Output, id: u64) -> Result<()> 
     Ok(())
 }
 
-pub async fn details(client: &GarminClient, _output: &Output, id: u64) -> Result<()> {
+pub async fn details(client: &GarminClient, output: &Output, id: u64) -> Result<()> {
     let path = format!("/activity-service/activity/{id}/details");
     let v: serde_json::Value = client.get_json(&path).await?;
-    println!("{}", serde_json::to_string_pretty(&v)?);
+    output.print_value(&v);
     Ok(())
 }
 
-pub async fn hr_zones(client: &GarminClient, _output: &Output, id: u64) -> Result<()> {
+pub async fn hr_zones(client: &GarminClient, output: &Output, id: u64) -> Result<()> {
     let path = format!("/activity-service/activity/{id}/hrTimeInZones");
     let v: serde_json::Value = client.get_json(&path).await?;
-    println!("{}", serde_json::to_string_pretty(&v)?);
+    output.print_value(&v);
     Ok(())
 }
 
-pub async fn splits(client: &GarminClient, _output: &Output, id: u64) -> Result<()> {
+pub async fn splits(client: &GarminClient, output: &Output, id: u64) -> Result<()> {
     let path = format!("/activity-service/activity/{id}/splits");
     let v: serde_json::Value = client.get_json(&path).await?;
-    println!("{}", serde_json::to_string_pretty(&v)?);
+    output.print_value(&v);
     Ok(())
 }
 
@@ -174,12 +174,16 @@ pub async fn upload(client: &GarminClient, output: &Output, file: &str) -> Resul
         .map(|f| f.to_string_lossy().to_string())
         .unwrap_or_else(|| "upload.fit".into());
 
-    let result = client
-        .put_file("/upload-service/upload/.fit", bytes, &filename)
-        .await?;
+    let ext = std::path::Path::new(file)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("fit");
+    let upload_path = format!("/upload-service/upload/.{ext}");
+
+    let result = client.put_file(&upload_path, bytes, &filename).await?;
 
     if output.is_json() {
-        println!("{}", serde_json::to_string_pretty(&result)?);
+        output.print_value(&result);
     } else {
         output.success(&format!("Uploaded {filename}"));
     }

@@ -54,7 +54,6 @@ pub async fn settings(client: &GarminClient, output: &Output) -> Result<()> {
     let v: serde_json::Value = client
         .get_json("/userprofile-service/userprofile/user-settings")
         .await?;
-    let _ = output; // settings are always JSON - complex nested structure
-    println!("{}", serde_json::to_string_pretty(&v)?);
+    output.print_value(&v);
     Ok(())
 }

@@ -103,7 +103,12 @@ pub async fn summary(
             sleep_seconds: v["sleepingSeconds"].as_u64(),
             floors_ascended: v["floorsAscended"].as_u64().map(|v| v as u32),
             floors_descended: v["floorsDescended"].as_u64().map(|v| v as u32),
-            intensity_minutes: v["intensityMinutesGoal"].as_u64().map(|v| v as u32),
+            intensity_minutes: {
+                let moderate = v["moderateIntensityMinutes"].as_u64().unwrap_or(0);
+                let vigorous = v["vigorousIntensityMinutes"].as_u64().unwrap_or(0);
+                let total = moderate + vigorous;
+                if total > 0 { Some(total as u32) } else { None }
+            },
         });
     }
 

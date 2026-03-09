@@ -40,6 +40,15 @@ impl Output {
         }
     }
 
+    /// Print a raw `serde_json::Value`, respecting quiet/fields flags.
+    pub fn print_value(&self, value: &serde_json::Value) {
+        if self.quiet {
+            return;
+        }
+        let filtered = self.filter_fields(value.clone());
+        println!("{}", serde_json::to_string_pretty(&filtered).unwrap());
+    }
+
     fn print_json<T: Serialize>(&self, data: &T) {
         let value = serde_json::to_value(data).unwrap();
         let filtered = self.filter_fields(value);

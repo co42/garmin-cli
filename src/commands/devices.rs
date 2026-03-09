@@ -62,7 +62,7 @@ pub async fn get(client: &GarminClient, output: &Output, id: u64) -> Result<()> 
         .await?;
 
     if output.is_json() {
-        println!("{}", serde_json::to_string_pretty(&v)?);
+        output.print_value(&v);
     } else {
         let device = Device {
             id,

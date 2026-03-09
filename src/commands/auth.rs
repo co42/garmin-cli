@@ -2,21 +2,22 @@ use crate::auth::{self, Tokens};
 use crate::error::Result;
 use crate::output::Output;
 
-pub async fn login(
-    output: &Output,
-    username: Option<String>,
-    password: Option<String>,
-) -> Result<()> {
-    let email = username
-        .or_else(|| std::env::var("GARMIN_EMAIL").ok())
-        .ok_or_else(|| {
-            crate::error::Error::Auth("Email required (--username or GARMIN_EMAIL)".into())
-        })?;
-    let pass = password
-        .or_else(|| std::env::var("GARMIN_PASSWORD").ok())
-        .ok_or_else(|| {
-            crate::error::Error::Auth("Password required (--password or GARMIN_PASSWORD)".into())
-        })?;
+fn prompt(label: &str) -> std::io::Result<String> {
+    eprint!("{label}: ");
+    let mut buf = String::new();
+    std::io::stdin().read_line(&mut buf)?;
+    Ok(buf.trim().to_string())
+}
+
+pub async fn login(output: &Output) -> Result<()> {
+    let email = std::env::var("GARMIN_EMAIL")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .map_or_else(|| prompt("Email"), Ok)?;
+    let pass = std::env::var("GARMIN_PASSWORD")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .map_or_else(|| prompt("Password"), Ok)?;
 
     output.status("Logging in to Garmin Connect...");
     let tokens = auth::login(&email, &pass).await?;
@@ -42,7 +43,7 @@ pub fn status(output: &Output) -> Result<()> {
             "expired": expired,
             "expires_at": expires,
         });
-        println!("{}", serde_json::to_string_pretty(&status).unwrap());
+        output.print_value(&status);
     } else if expired {
         output.status(&format!(
             "Token expired at {expires} (will auto-refresh on next request)"

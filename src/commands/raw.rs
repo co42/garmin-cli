@@ -4,7 +4,7 @@ use crate::output::Output;
 
 pub async fn api(
     client: &GarminClient,
-    _output: &Output,
+    output: &Output,
     path: &str,
     method: &str,
     data: Option<&str>,
@@ -19,6 +19,6 @@ pub async fn api(
     };
 
     let result = client.request(method, path, body.as_ref()).await?;
-    println!("{}", serde_json::to_string_pretty(&result)?);
+    output.print_value(&result);
     Ok(())
 }

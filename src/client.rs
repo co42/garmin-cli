@@ -213,7 +213,11 @@ impl GarminClient {
             return Err(Error::Api(format!("{status}: {body}")));
         }
 
-        Ok(resp.json().await?)
+        let body = resp.text().await.unwrap_or_default();
+        if body.is_empty() {
+            return Ok(serde_json::Value::Null);
+        }
+        Ok(serde_json::from_str(&body)?)
     }
 
     /// DELETE request with no response body expected

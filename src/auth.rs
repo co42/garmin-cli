@@ -64,8 +64,14 @@ impl Tokens {
     pub fn save(&self) -> Result<()> {
         let dir = config::config_dir();
         std::fs::create_dir_all(&dir)?;
+        let path = config::tokens_path();
         let data = serde_json::to_string_pretty(self)?;
-        std::fs::write(config::tokens_path(), data)?;
+        std::fs::write(&path, data)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+        }
         Ok(())
     }
 
@@ -228,6 +234,27 @@ fn extract_ticket(html: &str) -> Result<String> {
 // --- OAuth flow ---
 
 async fn fetch_consumer_credentials() -> Result<ConsumerCredentials> {
+    // 1. Env var override
+    if let (Ok(key), Ok(secret)) = (
+        std::env::var("GARMIN_CONSUMER_KEY"),
+        std::env::var("GARMIN_CONSUMER_SECRET"),
+    ) {
+        return Ok(ConsumerCredentials {
+            consumer_key: key,
+            consumer_secret: secret,
+        });
+    }
+
+    // 2. Local cache
+    let cache_path = config::consumer_path();
+    if cache_path.exists() {
+        let data = std::fs::read_to_string(&cache_path)?;
+        if let Ok(creds) = serde_json::from_str::<ConsumerCredentials>(&data) {
+            return Ok(creds);
+        }
+    }
+
+    // 3. Fetch from S3 and cache
     let resp: serde_json::Value = reqwest::get(OAUTH_CONSUMER_URL).await?.json().await?;
     let key = resp["consumer_key"]
         .as_str()
@@ -237,10 +264,18 @@ async fn fetch_consumer_credentials() -> Result<ConsumerCredentials> {
         .as_str()
         .ok_or_else(|| Error::Auth("Missing consumer secret".into()))?
         .to_string();
-    Ok(ConsumerCredentials {
+    let creds = ConsumerCredentials {
         consumer_key: key,
         consumer_secret: secret,
-    })
+    };
+
+    // Cache for next time
+    let dir = config::config_dir();
+    std::fs::create_dir_all(&dir)?;
+    let data = serde_json::to_string_pretty(&creds)?;
+    std::fs::write(&cache_path, data)?;
+
+    Ok(creds)
 }
 
 async fn exchange_ticket_for_oauth1(

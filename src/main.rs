@@ -116,15 +116,8 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum AuthCommands {
-    /// Log in to Garmin Connect
-    Login {
-        /// Garmin account email
-        #[arg(long, env = "GARMIN_EMAIL")]
-        username: Option<String>,
-        /// Garmin account password
-        #[arg(long, env = "GARMIN_PASSWORD")]
-        password: Option<String>,
-    },
+    /// Log in to Garmin Connect (reads GARMIN_EMAIL / GARMIN_PASSWORD env vars, or prompts)
+    Login,
     /// Show authentication status
     Status,
     /// Log out (delete stored tokens)
@@ -416,9 +409,7 @@ async fn main() -> anyhow::Result<()> {
     let result = match cli.command {
         // --- Auth (no client needed) ---
         Commands::Auth { command } => match command {
-            AuthCommands::Login { username, password } => {
-                commands::auth::login(&output, username, password).await
-            }
+            AuthCommands::Login => commands::auth::login(&output).await,
             AuthCommands::Status => commands::auth::status(&output),
             AuthCommands::Logout => commands::auth::logout(&output),
         },
