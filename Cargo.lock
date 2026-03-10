@@ -543,7 +543,7 @@ dependencies = [
 
 [[package]]
 name = "garmin-cli"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "anyhow",
  "base64",
