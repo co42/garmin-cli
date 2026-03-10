@@ -5,6 +5,10 @@ edition = "2024"
 description = "Garmin Connect CLI"
 license = "MIT"
 repository = "https://github.com/co42/garmin-cli"
+authors = ["Corentin Regal"]
+readme = "README.md"
+keywords = ["garmin", "cli", "fitness", "running"]
+categories = ["command-line-utilities"]
 
 [[bin]]
 name = "garmin"
