@@ -832,9 +832,7 @@ async fn run(command: Commands, output: &Output) -> std::result::Result<(), Erro
             let client = GarminClient::new(require_auth()?)?;
             match command {
                 GearCommands::List => commands::gear::list(&client, output).await,
-                GearCommands::Stats { uuid } => {
-                    commands::gear::stats(&client, output, &uuid).await
-                }
+                GearCommands::Stats { uuid } => commands::gear::stats(&client, output, &uuid).await,
                 GearCommands::Link { uuid, activity_id } => {
                     commands::gear::link(&client, output, &uuid, activity_id).await
                 }

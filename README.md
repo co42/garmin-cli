@@ -54,42 +54,47 @@ garmin summary --days 7                # Last 7 days
 
 ### Health
 ```bash
-garmin health sleep [--date DATE] [--days N]
-garmin health sleep-scores [--date DATE] [--days N]   # Daily sleep score trends (default 7d)
-garmin health stress [--date DATE] [--days N]
-garmin health heart-rate [--date DATE] [--days N]
+garmin health sleep [--date DATE] [--days N] [--from DATE --to DATE]
+garmin health sleep-scores [--date DATE] [--days N] [--from DATE --to DATE]
+garmin health stress [--date DATE] [--days N] [--from DATE --to DATE]
+garmin health heart-rate [--date DATE] [--days N] [--from DATE --to DATE]
 garmin health body-battery [--date DATE]
-garmin health hrv [--date DATE] [--days N]
-garmin health steps [--date DATE] [--days N]
-garmin health weight [--date DATE] [--days N]
-garmin health hydration [--date DATE] [--days N]
+garmin health hrv [--date DATE] [--days N] [--from DATE --to DATE]
+garmin health steps [--date DATE] [--days N] [--from DATE --to DATE]
+garmin health weight [--date DATE] [--days N] [--from DATE --to DATE]
+garmin health hydration [--date DATE] [--days N] [--from DATE --to DATE]
 garmin health spo2 [--date DATE]
 garmin health respiration [--date DATE]
-garmin health intensity-minutes [--date DATE] [--days N]
+garmin health intensity-minutes [--date DATE] [--days N] [--from DATE --to DATE]
 ```
+
+`--from`/`--to` and `--date` are mutually exclusive. `--to` defaults to today.
 
 ### Training
 ```bash
-garmin training status [--date DATE] [--days N]
-garmin training readiness [--date DATE] [--days N]
-garmin training scores [--date DATE] [--days N]          # VO2max / maxmet history
-garmin training race-predictions                          # 5K, 10K, half, marathon
-garmin training endurance-score [--date DATE] [--days N]
-garmin training hill-score [--date DATE] [--days N]
+garmin training status [--date DATE] [--days N] [--from DATE --to DATE]
+garmin training readiness [--date DATE] [--days N] [--from DATE --to DATE]
+garmin training scores [--date DATE] [--days N] [--from DATE --to DATE]
+garmin training race-predictions
+garmin training endurance-score [--date DATE] [--days N] [--from DATE --to DATE]
+garmin training hill-score [--date DATE] [--days N] [--from DATE --to DATE]
 garmin training fitness-age [--date DATE]
-garmin training lactate-threshold                         # Latest LT speed & HR
+garmin training lactate-threshold
 ```
 
 ### Activities
 ```bash
-garmin activities list [--limit 20] [--type trail_running]
+garmin activities list [--limit 20] [--type trail_running] [--after DATE] [--before DATE]
 garmin activities get <ID>
 garmin activities details <ID>                  # Full metrics, polyline, time-series
 garmin activities splits <ID>                   # Per-km lap data (pace, HR, elevation)
 garmin activities hr-zones <ID>                 # HR time in zones
+garmin activities compare <ID1> <ID2>           # Side-by-side comparison with deltas
 garmin activities download <ID> [--format fit|gpx|tcx] [--output PATH]
 garmin activities upload <FILE>
 ```
+
+Activity summaries include a computed `pace_min_km` field (derived from distance and duration).
 
 ### Workouts
 ```bash
@@ -98,6 +103,7 @@ garmin workouts get <ID>
 garmin workouts create --file workout.json      # Push structured workout to Garmin
 garmin workouts schedule <ID> <DATE>            # Schedule on calendar
 garmin workouts delete <ID>
+garmin workouts template [--type interval|tempo|easy|long-run]  # Print a workout JSON template
 ```
 
 ### Gear
@@ -123,11 +129,19 @@ garmin devices list
 garmin devices get <ID>
 ```
 
+### Shell Completions
+```bash
+garmin completions bash > ~/.local/share/bash-completion/completions/garmin
+garmin completions zsh > ~/.zfunc/_garmin
+garmin completions fish > ~/.config/fish/completions/garmin.fish
+```
+
 ## Output Formats
 
 - Default: Human-readable (when TTY)
 - `--json`: Force JSON output
 - `--no-json`: Force human output
+- `--compact`: Compact JSON (no pretty-printing)
 - `--fields f1,f2`: Filter JSON output fields
 - `-q, --quiet`: Suppress status messages
 
@@ -137,6 +151,16 @@ Pipes auto-detect: `garmin summary | jq .` outputs JSON automatically.
 garmin summary --json --fields date,total_steps,resting_heart_rate
 garmin health sleep --days 7 --json --fields date,sleep_score
 ```
+
+### Structured Errors
+
+With `--json`, errors are returned as JSON with machine-readable error codes and appropriate exit codes:
+
+```json
+{"error": "message", "code": "auth", "exit_code": 2}
+```
+
+Codes: `auth` (exit 2), `not_found` (exit 3), `rate_limit` (exit 4), `api` / `generic` (exit 1).
 
 ## Development
 

@@ -334,16 +334,8 @@ fn print_comparison_human(a1: &ActivitySummary, a2: &ActivitySummary) {
         a1.pace_min_km.as_deref().unwrap_or("\u{2014}"),
         a2.pace_min_km.as_deref().unwrap_or("\u{2014}"),
     );
-    print_row(
-        "Avg HR",
-        &fmt_opt_f64(a1.avg_hr),
-        &fmt_opt_f64(a2.avg_hr),
-    );
-    print_row(
-        "Max HR",
-        &fmt_opt_f64(a1.max_hr),
-        &fmt_opt_f64(a2.max_hr),
-    );
+    print_row("Avg HR", &fmt_opt_f64(a1.avg_hr), &fmt_opt_f64(a2.avg_hr));
+    print_row("Max HR", &fmt_opt_f64(a1.max_hr), &fmt_opt_f64(a2.max_hr));
     print_row(
         "Calories",
         &fmt_opt_f64(a1.calories),
