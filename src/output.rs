@@ -7,17 +7,17 @@ use crate::error::Error;
 #[derive(Debug, Clone)]
 pub struct Output {
     json: bool,
-    compact: bool,
+    pretty: bool,
     quiet: bool,
     fields: Vec<String>,
 }
 
 impl Output {
-    pub fn new(json: Option<bool>, compact: bool, quiet: bool, fields: Vec<String>) -> Self {
+    pub fn new(json: Option<bool>, pretty: bool, quiet: bool, fields: Vec<String>) -> Self {
         let json = json.unwrap_or_else(|| !std::io::stdout().is_terminal());
         Self {
             json,
-            compact,
+            pretty,
             quiet,
             fields,
         }
@@ -60,10 +60,10 @@ impl Output {
     }
 
     fn serialize_json<T: Serialize>(&self, data: &T) -> String {
-        if self.compact {
-            serde_json::to_string(data).unwrap()
-        } else {
+        if self.pretty {
             serde_json::to_string_pretty(data).unwrap()
+        } else {
+            serde_json::to_string(data).unwrap()
         }
     }
 
@@ -93,10 +93,10 @@ impl Output {
                 "error": err.to_string(),
                 "code": err.code(),
             });
-            let s = if self.compact {
-                serde_json::to_string(&obj).unwrap()
-            } else {
+            let s = if self.pretty {
                 serde_json::to_string_pretty(&obj).unwrap()
+            } else {
+                serde_json::to_string(&obj).unwrap()
             };
             eprintln!("{s}");
         } else {

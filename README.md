@@ -141,7 +141,7 @@ garmin completions fish > ~/.config/fish/completions/garmin.fish
 - Default: Human-readable (when TTY)
 - `--json`: Force JSON output
 - `--no-json`: Force human output
-- `--compact`: Compact JSON (no pretty-printing)
+- `--pretty`: Pretty-print JSON (default is compact)
 - `--fields f1,f2`: Filter JSON output fields
 - `-q, --quiet`: Suppress status messages
 
