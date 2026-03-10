@@ -10,9 +10,9 @@ fn compute_pace(distance_meters: Option<f64>, duration_seconds: f64) -> Option<S
     if dist <= 0.0 || duration_seconds <= 0.0 {
         return None;
     }
-    let pace_secs_per_km = duration_seconds / (dist / 1000.0);
-    let mins = (pace_secs_per_km / 60.0).floor() as u32;
-    let secs = (pace_secs_per_km % 60.0).round() as u32;
+    let pace_secs_per_km = (duration_seconds / (dist / 1000.0)).round() as u32;
+    let mins = pace_secs_per_km / 60;
+    let secs = pace_secs_per_km % 60;
     Some(format!("{mins}:{secs:02} /km"))
 }
 
@@ -87,21 +87,22 @@ fn activity_from_list(a: &serde_json::Value) -> ActivitySummary {
 }
 
 fn activity_from_detail(id: u64, v: &serde_json::Value) -> ActivitySummary {
-    let duration_seconds = v["summary"]["duration"]["value"].as_f64().unwrap_or(0.0);
-    let distance_meters = v["summary"]["distance"]["value"].as_f64();
+    let s = &v["summaryDTO"];
+    let duration_seconds = s["duration"].as_f64().unwrap_or(0.0);
+    let distance_meters = s["distance"].as_f64();
     ActivitySummary {
         id,
         name: v["activityName"].as_str().unwrap_or("Untitled").into(),
-        activity_type: v["activityType"]["typeKey"]
+        activity_type: v["activityTypeDTO"]["typeKey"]
             .as_str()
             .unwrap_or("unknown")
             .into(),
-        start_time: v["startTimeLocal"].as_str().unwrap_or("").into(),
+        start_time: s["startTimeLocal"].as_str().unwrap_or("").into(),
         duration_seconds,
         distance_meters,
-        calories: v["summary"]["calories"]["value"].as_f64(),
-        avg_hr: v["summary"]["averageHR"]["value"].as_f64(),
-        max_hr: v["summary"]["maxHR"]["value"].as_f64(),
+        calories: s["calories"].as_f64(),
+        avg_hr: s["averageHR"].as_f64(),
+        max_hr: s["maxHR"].as_f64(),
         avg_pace: None,
         pace_min_km: compute_pace(distance_meters, duration_seconds),
     }
