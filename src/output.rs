@@ -2,18 +2,22 @@ use colored::Colorize;
 use serde::Serialize;
 use std::io::IsTerminal;
 
+use crate::error::Error;
+
 #[derive(Debug, Clone)]
 pub struct Output {
     json: bool,
+    compact: bool,
     quiet: bool,
     fields: Vec<String>,
 }
 
 impl Output {
-    pub fn new(json: Option<bool>, quiet: bool, fields: Vec<String>) -> Self {
+    pub fn new(json: Option<bool>, compact: bool, quiet: bool, fields: Vec<String>) -> Self {
         let json = json.unwrap_or_else(|| !std::io::stdout().is_terminal());
         Self {
             json,
+            compact,
             quiet,
             fields,
         }
@@ -32,7 +36,7 @@ impl Output {
             self.print_json(&items);
         } else if !self.quiet {
             println!("{}", title.bold());
-            println!("{}", "─".repeat(40));
+            println!("{}", "\u{2500}".repeat(40));
             for item in items {
                 item.print_human();
             }
@@ -46,13 +50,21 @@ impl Output {
             return;
         }
         let filtered = self.filter_fields(value.clone());
-        println!("{}", serde_json::to_string_pretty(&filtered).unwrap());
+        println!("{}", self.serialize_json(&filtered));
     }
 
     fn print_json<T: Serialize>(&self, data: &T) {
         let value = serde_json::to_value(data).unwrap();
         let filtered = self.filter_fields(value);
-        println!("{}", serde_json::to_string_pretty(&filtered).unwrap());
+        println!("{}", self.serialize_json(&filtered));
+    }
+
+    fn serialize_json<T: Serialize>(&self, data: &T) -> String {
+        if self.compact {
+            serde_json::to_string(data).unwrap()
+        } else {
+            serde_json::to_string_pretty(data).unwrap()
+        }
     }
 
     fn filter_fields(&self, value: serde_json::Value) -> serde_json::Value {
@@ -74,9 +86,27 @@ impl Output {
         }
     }
 
+    /// Print a structured error. JSON mode emits `{"error": "...", "code": "..."}` to stderr.
+    pub fn error_structured(&self, err: &Error) {
+        if self.json {
+            let obj = serde_json::json!({
+                "error": err.to_string(),
+                "code": err.code(),
+            });
+            let s = if self.compact {
+                serde_json::to_string(&obj).unwrap()
+            } else {
+                serde_json::to_string_pretty(&obj).unwrap()
+            };
+            eprintln!("{s}");
+        } else {
+            eprintln!("{} {}", "\u{2717}".red(), err);
+        }
+    }
+
     pub fn success(&self, msg: &str) {
         if !self.quiet && !self.json {
-            println!("{} {}", "✓".green(), msg);
+            println!("{} {}", "\u{2713}".green(), msg);
         }
     }
 
@@ -87,7 +117,7 @@ impl Output {
     }
 
     pub fn error(&self, msg: &str) {
-        eprintln!("{} {}", "✗".red(), msg);
+        eprintln!("{} {}", "\u{2717}".red(), msg);
     }
 
     pub fn is_json(&self) -> bool {

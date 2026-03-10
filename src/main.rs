@@ -1,6 +1,7 @@
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use garmin_cli::auth::Tokens;
 use garmin_cli::commands;
+use garmin_cli::error::Error;
 use garmin_cli::{GarminClient, Output};
 
 #[derive(Parser)]
@@ -13,6 +14,10 @@ struct Cli {
     /// Force human output (override TTY auto-detect)
     #[arg(long, global = true)]
     no_json: bool,
+
+    /// Compact JSON (no pretty-printing)
+    #[arg(long, global = true)]
+    compact: bool,
 
     /// Filter output fields (comma-separated, JSON mode only)
     #[arg(long, global = true, value_delimiter = ',')]
@@ -35,7 +40,7 @@ impl Cli {
         } else {
             None
         };
-        Output::new(json, self.quiet, self.fields.clone())
+        Output::new(json, self.compact, self.quiet, self.fields.clone())
     }
 }
 
@@ -65,11 +70,17 @@ enum Commands {
     /// Daily summary
     Summary {
         /// Date (YYYY-MM-DD), defaults to today
-        #[arg(long)]
+        #[arg(long, group = "date_selector")]
         date: Option<String>,
         /// Number of days
         #[arg(long)]
         days: Option<u32>,
+        /// Start of date range (YYYY-MM-DD)
+        #[arg(long, group = "date_selector")]
+        from: Option<String>,
+        /// End of date range (YYYY-MM-DD)
+        #[arg(long, requires = "from")]
+        to: Option<String>,
     },
     /// Health metrics
     Health {
@@ -112,6 +123,18 @@ enum Commands {
         #[command(subcommand)]
         command: DeviceCommands,
     },
+    /// Generate shell completions
+    Completions {
+        /// Shell to generate completions for
+        shell: ShellChoice,
+    },
+}
+
+#[derive(Clone, ValueEnum)]
+enum ShellChoice {
+    Bash,
+    Zsh,
+    Fish,
 }
 
 #[derive(Subcommand)]
@@ -136,32 +159,50 @@ enum ProfileCommands {
 enum HealthCommands {
     /// Sleep data
     Sleep {
-        #[arg(long)]
+        #[arg(long, group = "date_selector")]
         date: Option<String>,
         #[arg(long)]
         days: Option<u32>,
+        /// Start of date range (YYYY-MM-DD)
+        #[arg(long, group = "date_selector")]
+        from: Option<String>,
+        /// End of date range (YYYY-MM-DD)
+        #[arg(long, requires = "from")]
+        to: Option<String>,
     },
     /// Sleep score trends
     SleepScores {
-        #[arg(long)]
+        #[arg(long, group = "date_selector")]
         date: Option<String>,
         /// Number of days (default 7)
         #[arg(long)]
         days: Option<u32>,
+        #[arg(long, group = "date_selector")]
+        from: Option<String>,
+        #[arg(long, requires = "from")]
+        to: Option<String>,
     },
     /// Stress levels
     Stress {
-        #[arg(long)]
+        #[arg(long, group = "date_selector")]
         date: Option<String>,
         #[arg(long)]
         days: Option<u32>,
+        #[arg(long, group = "date_selector")]
+        from: Option<String>,
+        #[arg(long, requires = "from")]
+        to: Option<String>,
     },
     /// Heart rate
     HeartRate {
-        #[arg(long)]
+        #[arg(long, group = "date_selector")]
         date: Option<String>,
         #[arg(long)]
         days: Option<u32>,
+        #[arg(long, group = "date_selector")]
+        from: Option<String>,
+        #[arg(long, requires = "from")]
+        to: Option<String>,
     },
     /// Body battery
     BodyBattery {
@@ -170,31 +211,47 @@ enum HealthCommands {
     },
     /// Heart rate variability
     Hrv {
-        #[arg(long)]
+        #[arg(long, group = "date_selector")]
         date: Option<String>,
         #[arg(long)]
         days: Option<u32>,
+        #[arg(long, group = "date_selector")]
+        from: Option<String>,
+        #[arg(long, requires = "from")]
+        to: Option<String>,
     },
     /// Step count
     Steps {
-        #[arg(long)]
+        #[arg(long, group = "date_selector")]
         date: Option<String>,
         #[arg(long)]
         days: Option<u32>,
+        #[arg(long, group = "date_selector")]
+        from: Option<String>,
+        #[arg(long, requires = "from")]
+        to: Option<String>,
     },
     /// Weight
     Weight {
-        #[arg(long)]
+        #[arg(long, group = "date_selector")]
         date: Option<String>,
         #[arg(long)]
         days: Option<u32>,
+        #[arg(long, group = "date_selector")]
+        from: Option<String>,
+        #[arg(long, requires = "from")]
+        to: Option<String>,
     },
     /// Hydration
     Hydration {
-        #[arg(long)]
+        #[arg(long, group = "date_selector")]
         date: Option<String>,
         #[arg(long)]
         days: Option<u32>,
+        #[arg(long, group = "date_selector")]
+        from: Option<String>,
+        #[arg(long, requires = "from")]
+        to: Option<String>,
     },
     /// Blood oxygen (SpO2)
     Spo2 {
@@ -208,10 +265,14 @@ enum HealthCommands {
     },
     /// Intensity minutes
     IntensityMinutes {
-        #[arg(long)]
+        #[arg(long, group = "date_selector")]
         date: Option<String>,
         #[arg(long)]
         days: Option<u32>,
+        #[arg(long, group = "date_selector")]
+        from: Option<String>,
+        #[arg(long, requires = "from")]
+        to: Option<String>,
     },
 }
 
@@ -219,40 +280,60 @@ enum HealthCommands {
 enum TrainingCommands {
     /// Training status
     Status {
-        #[arg(long)]
+        #[arg(long, group = "date_selector")]
         date: Option<String>,
         #[arg(long)]
         days: Option<u32>,
+        #[arg(long, group = "date_selector")]
+        from: Option<String>,
+        #[arg(long, requires = "from")]
+        to: Option<String>,
     },
     /// Training readiness
     Readiness {
-        #[arg(long)]
+        #[arg(long, group = "date_selector")]
         date: Option<String>,
         #[arg(long)]
         days: Option<u32>,
+        #[arg(long, group = "date_selector")]
+        from: Option<String>,
+        #[arg(long, requires = "from")]
+        to: Option<String>,
     },
     /// Training scores (VO2max, maxmet)
     Scores {
-        #[arg(long)]
+        #[arg(long, group = "date_selector")]
         date: Option<String>,
         #[arg(long)]
         days: Option<u32>,
+        #[arg(long, group = "date_selector")]
+        from: Option<String>,
+        #[arg(long, requires = "from")]
+        to: Option<String>,
     },
     /// Race predictions (5K, 10K, half, marathon)
     RacePredictions,
     /// Endurance score
     EnduranceScore {
-        #[arg(long)]
+        #[arg(long, group = "date_selector")]
         date: Option<String>,
         #[arg(long)]
         days: Option<u32>,
+        #[arg(long, group = "date_selector")]
+        from: Option<String>,
+        #[arg(long, requires = "from")]
+        to: Option<String>,
     },
     /// Hill score
     HillScore {
-        #[arg(long)]
+        #[arg(long, group = "date_selector")]
         date: Option<String>,
         #[arg(long)]
         days: Option<u32>,
+        #[arg(long, group = "date_selector")]
+        from: Option<String>,
+        #[arg(long, requires = "from")]
+        to: Option<String>,
     },
     /// Fitness age
     FitnessAge {
@@ -276,6 +357,12 @@ enum ActivityCommands {
         /// Filter by activity type (e.g. running, trail_running, cycling)
         #[arg(long, short = 't')]
         r#type: Option<String>,
+        /// Only show activities after this date (YYYY-MM-DD)
+        #[arg(long)]
+        after: Option<String>,
+        /// Only show activities before this date (YYYY-MM-DD)
+        #[arg(long)]
+        before: Option<String>,
     },
     /// Get activity summary
     Get {
@@ -312,6 +399,13 @@ enum ActivityCommands {
     Upload {
         /// Path to FIT/GPX/TCX file
         file: String,
+    },
+    /// Compare two activities side-by-side
+    Compare {
+        /// First activity ID
+        id1: u64,
+        /// Second activity ID
+        id2: u64,
     },
 }
 
@@ -366,6 +460,20 @@ enum WorkoutCommands {
         /// Workout ID
         id: u64,
     },
+    /// Generate a workout template
+    Template {
+        /// Template type
+        #[arg(long, default_value = "interval")]
+        r#type: TemplateType,
+    },
+}
+
+#[derive(Clone, ValueEnum)]
+enum TemplateType {
+    Interval,
+    Tempo,
+    Easy,
+    LongRun,
 }
 
 #[derive(Subcommand)]
@@ -401,76 +509,180 @@ fn require_auth() -> anyhow::Result<Tokens> {
     Tokens::load().map_err(|e| anyhow::anyhow!("{e}"))
 }
 
+/// Resolve `--from`/`--to` into `(date, days)` for use with existing fetch_date_range.
+fn resolve_date_range(
+    date: Option<String>,
+    days: Option<u32>,
+    from: Option<String>,
+    to: Option<String>,
+) -> std::result::Result<(Option<String>, Option<u32>), Error> {
+    if let Some(from_str) = from {
+        let from_d = garmin_cli::util::parse_date(&from_str)?;
+        let to_str = to.unwrap_or_else(garmin_cli::util::today);
+        let to_d = garmin_cli::util::parse_date(&to_str)?;
+        let day_count = (to_d - from_d).num_days() + 1;
+        if day_count < 1 {
+            return Err(Error::Api("--from must be before --to".into()));
+        }
+        Ok((Some(to_str), Some(day_count as u32)))
+    } else {
+        Ok((date, days))
+    }
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let output = cli.output();
 
-    let result = match cli.command {
+    let result: std::result::Result<(), Error> = run(cli.command, &output).await;
+
+    if let Err(e) = result {
+        output.error_structured(&e);
+        std::process::exit(e.exit_code());
+    }
+
+    Ok(())
+}
+
+async fn run(command: Commands, output: &Output) -> std::result::Result<(), Error> {
+    match command {
         // --- Auth (no client needed) ---
         Commands::Auth { command } => match command {
-            AuthCommands::Login => commands::auth::login(&output).await,
-            AuthCommands::Status => commands::auth::status(&output),
-            AuthCommands::Logout => commands::auth::logout(&output),
+            AuthCommands::Login => commands::auth::login(output).await,
+            AuthCommands::Status => commands::auth::status(output),
+            AuthCommands::Logout => commands::auth::logout(output),
         },
+
+        // --- Completions ---
+        Commands::Completions { shell } => {
+            let shell = match shell {
+                ShellChoice::Bash => clap_complete::Shell::Bash,
+                ShellChoice::Zsh => clap_complete::Shell::Zsh,
+                ShellChoice::Fish => clap_complete::Shell::Fish,
+            };
+            let mut cmd = Cli::command();
+            clap_complete::generate(shell, &mut cmd, "garmin", &mut std::io::stdout());
+            Ok(())
+        }
 
         // --- Everything else needs auth ---
         Commands::Api { path, method, data } => {
             let client = GarminClient::new(require_auth()?)?;
-            commands::raw::api(&client, &output, &path, &method, data.as_deref()).await
+            commands::raw::api(&client, output, &path, &method, data.as_deref()).await
         }
 
         Commands::Profile { command } => {
             let client = GarminClient::new(require_auth()?)?;
             match command {
-                ProfileCommands::Show => commands::profile::show(&client, &output).await,
-                ProfileCommands::Settings => commands::profile::settings(&client, &output).await,
+                ProfileCommands::Show => commands::profile::show(&client, output).await,
+                ProfileCommands::Settings => commands::profile::settings(&client, output).await,
             }
         }
 
-        Commands::Summary { date, days } => {
+        Commands::Summary {
+            date,
+            days,
+            from,
+            to,
+        } => {
             let client = GarminClient::new(require_auth()?)?;
-            commands::summary::summary(&client, &output, date.as_deref(), days).await
+            let (date, days) = resolve_date_range(date, days, from, to)?;
+            commands::summary::summary(&client, output, date.as_deref(), days).await
         }
 
         Commands::Health { command } => {
             let client = GarminClient::new(require_auth()?)?;
             match command {
-                HealthCommands::Sleep { date, days } => {
-                    commands::health::sleep(&client, &output, date.as_deref(), days).await
+                HealthCommands::Sleep {
+                    date,
+                    days,
+                    from,
+                    to,
+                } => {
+                    let (date, days) = resolve_date_range(date, days, from, to)?;
+                    commands::health::sleep(&client, output, date.as_deref(), days).await
                 }
-                HealthCommands::SleepScores { date, days } => {
-                    commands::health::sleep_scores(&client, &output, date.as_deref(), days).await
+                HealthCommands::SleepScores {
+                    date,
+                    days,
+                    from,
+                    to,
+                } => {
+                    let (date, days) = resolve_date_range(date, days, from, to)?;
+                    commands::health::sleep_scores(&client, output, date.as_deref(), days).await
                 }
-                HealthCommands::Stress { date, days } => {
-                    commands::health::stress(&client, &output, date.as_deref(), days).await
+                HealthCommands::Stress {
+                    date,
+                    days,
+                    from,
+                    to,
+                } => {
+                    let (date, days) = resolve_date_range(date, days, from, to)?;
+                    commands::health::stress(&client, output, date.as_deref(), days).await
                 }
-                HealthCommands::HeartRate { date, days } => {
-                    commands::health::heart_rate(&client, &output, date.as_deref(), days).await
+                HealthCommands::HeartRate {
+                    date,
+                    days,
+                    from,
+                    to,
+                } => {
+                    let (date, days) = resolve_date_range(date, days, from, to)?;
+                    commands::health::heart_rate(&client, output, date.as_deref(), days).await
                 }
                 HealthCommands::BodyBattery { date } => {
-                    commands::health::body_battery(&client, &output, date.as_deref()).await
+                    commands::health::body_battery(&client, output, date.as_deref()).await
                 }
-                HealthCommands::Hrv { date, days } => {
-                    commands::health::hrv(&client, &output, date.as_deref(), days).await
+                HealthCommands::Hrv {
+                    date,
+                    days,
+                    from,
+                    to,
+                } => {
+                    let (date, days) = resolve_date_range(date, days, from, to)?;
+                    commands::health::hrv(&client, output, date.as_deref(), days).await
                 }
-                HealthCommands::Steps { date, days } => {
-                    commands::health::steps(&client, &output, date.as_deref(), days).await
+                HealthCommands::Steps {
+                    date,
+                    days,
+                    from,
+                    to,
+                } => {
+                    let (date, days) = resolve_date_range(date, days, from, to)?;
+                    commands::health::steps(&client, output, date.as_deref(), days).await
                 }
-                HealthCommands::Weight { date, days } => {
-                    commands::health::weight(&client, &output, date.as_deref(), days).await
+                HealthCommands::Weight {
+                    date,
+                    days,
+                    from,
+                    to,
+                } => {
+                    let (date, days) = resolve_date_range(date, days, from, to)?;
+                    commands::health::weight(&client, output, date.as_deref(), days).await
                 }
-                HealthCommands::Hydration { date, days } => {
-                    commands::health::hydration(&client, &output, date.as_deref(), days).await
+                HealthCommands::Hydration {
+                    date,
+                    days,
+                    from,
+                    to,
+                } => {
+                    let (date, days) = resolve_date_range(date, days, from, to)?;
+                    commands::health::hydration(&client, output, date.as_deref(), days).await
                 }
                 HealthCommands::Spo2 { date } => {
-                    commands::health::spo2(&client, &output, date.as_deref()).await
+                    commands::health::spo2(&client, output, date.as_deref()).await
                 }
                 HealthCommands::Respiration { date } => {
-                    commands::health::respiration(&client, &output, date.as_deref()).await
+                    commands::health::respiration(&client, output, date.as_deref()).await
                 }
-                HealthCommands::IntensityMinutes { date, days } => {
-                    commands::health::intensity_minutes(&client, &output, date.as_deref(), days)
+                HealthCommands::IntensityMinutes {
+                    date,
+                    days,
+                    from,
+                    to,
+                } => {
+                    let (date, days) = resolve_date_range(date, days, from, to)?;
+                    commands::health::intensity_minutes(&client, output, date.as_deref(), days)
                         .await
                 }
             }
@@ -479,30 +691,60 @@ async fn main() -> anyhow::Result<()> {
         Commands::Training { command } => {
             let client = GarminClient::new(require_auth()?)?;
             match command {
-                TrainingCommands::Status { date, days } => {
-                    commands::training::status(&client, &output, date.as_deref(), days).await
+                TrainingCommands::Status {
+                    date,
+                    days,
+                    from,
+                    to,
+                } => {
+                    let (date, days) = resolve_date_range(date, days, from, to)?;
+                    commands::training::status(&client, output, date.as_deref(), days).await
                 }
-                TrainingCommands::Readiness { date, days } => {
-                    commands::training::readiness(&client, &output, date.as_deref(), days).await
+                TrainingCommands::Readiness {
+                    date,
+                    days,
+                    from,
+                    to,
+                } => {
+                    let (date, days) = resolve_date_range(date, days, from, to)?;
+                    commands::training::readiness(&client, output, date.as_deref(), days).await
                 }
-                TrainingCommands::Scores { date, days } => {
-                    commands::training::scores(&client, &output, date.as_deref(), days).await
+                TrainingCommands::Scores {
+                    date,
+                    days,
+                    from,
+                    to,
+                } => {
+                    let (date, days) = resolve_date_range(date, days, from, to)?;
+                    commands::training::scores(&client, output, date.as_deref(), days).await
                 }
                 TrainingCommands::RacePredictions => {
-                    commands::training::race_predictions(&client, &output).await
+                    commands::training::race_predictions(&client, output).await
                 }
-                TrainingCommands::EnduranceScore { date, days } => {
-                    commands::training::endurance_score(&client, &output, date.as_deref(), days)
+                TrainingCommands::EnduranceScore {
+                    date,
+                    days,
+                    from,
+                    to,
+                } => {
+                    let (date, days) = resolve_date_range(date, days, from, to)?;
+                    commands::training::endurance_score(&client, output, date.as_deref(), days)
                         .await
                 }
-                TrainingCommands::HillScore { date, days } => {
-                    commands::training::hill_score(&client, &output, date.as_deref(), days).await
+                TrainingCommands::HillScore {
+                    date,
+                    days,
+                    from,
+                    to,
+                } => {
+                    let (date, days) = resolve_date_range(date, days, from, to)?;
+                    commands::training::hill_score(&client, output, date.as_deref(), days).await
                 }
                 TrainingCommands::FitnessAge { date } => {
-                    commands::training::fitness_age(&client, &output, date.as_deref()).await
+                    commands::training::fitness_age(&client, output, date.as_deref()).await
                 }
                 TrainingCommands::LactateThreshold => {
-                    commands::training::lactate_threshold(&client, &output).await
+                    commands::training::lactate_threshold(&client, output).await
                 }
             }
         }
@@ -514,21 +756,31 @@ async fn main() -> anyhow::Result<()> {
                     limit,
                     start,
                     r#type,
+                    after,
+                    before,
                 } => {
-                    commands::activities::list(&client, &output, limit, start, r#type.as_deref())
-                        .await
+                    commands::activities::list(
+                        &client,
+                        output,
+                        limit,
+                        start,
+                        r#type.as_deref(),
+                        after.as_deref(),
+                        before.as_deref(),
+                    )
+                    .await
                 }
                 ActivityCommands::Get { id } => {
-                    commands::activities::get(&client, &output, id).await
+                    commands::activities::get(&client, output, id).await
                 }
                 ActivityCommands::Details { id } => {
-                    commands::activities::details(&client, &output, id).await
+                    commands::activities::details(&client, output, id).await
                 }
                 ActivityCommands::Splits { id } => {
-                    commands::activities::splits(&client, &output, id).await
+                    commands::activities::splits(&client, output, id).await
                 }
                 ActivityCommands::HrZones { id } => {
-                    commands::activities::hr_zones(&client, &output, id).await
+                    commands::activities::hr_zones(&client, output, id).await
                 }
                 ActivityCommands::Download {
                     id,
@@ -539,7 +791,10 @@ async fn main() -> anyhow::Result<()> {
                         .await
                 }
                 ActivityCommands::Upload { file } => {
-                    commands::activities::upload(&client, &output, &file).await
+                    commands::activities::upload(&client, output, &file).await
+                }
+                ActivityCommands::Compare { id1, id2 } => {
+                    commands::activities::compare(&client, output, id1, id2).await
                 }
             }
         }
@@ -548,17 +803,27 @@ async fn main() -> anyhow::Result<()> {
             let client = GarminClient::new(require_auth()?)?;
             match command {
                 WorkoutCommands::List { limit, start } => {
-                    commands::workouts::list(&client, &output, limit, start).await
+                    commands::workouts::list(&client, output, limit, start).await
                 }
-                WorkoutCommands::Get { id } => commands::workouts::get(&client, &output, id).await,
+                WorkoutCommands::Get { id } => commands::workouts::get(&client, output, id).await,
                 WorkoutCommands::Create { file } => {
-                    commands::workouts::create(&client, &output, &file).await
+                    commands::workouts::create(&client, output, &file).await
                 }
                 WorkoutCommands::Schedule { id, date } => {
-                    commands::workouts::schedule(&client, &output, id, &date).await
+                    commands::workouts::schedule(&client, output, id, &date).await
                 }
                 WorkoutCommands::Delete { id } => {
-                    commands::workouts::delete(&client, &output, id).await
+                    commands::workouts::delete(&client, output, id).await
+                }
+                WorkoutCommands::Template { r#type } => {
+                    let kind = match r#type {
+                        TemplateType::Interval => "interval",
+                        TemplateType::Tempo => "tempo",
+                        TemplateType::Easy => "easy",
+                        TemplateType::LongRun => "long_run",
+                    };
+                    commands::workouts::template(output, kind);
+                    Ok(())
                 }
             }
         }
@@ -566,39 +831,32 @@ async fn main() -> anyhow::Result<()> {
         Commands::Gear { command } => {
             let client = GarminClient::new(require_auth()?)?;
             match command {
-                GearCommands::List => commands::gear::list(&client, &output).await,
+                GearCommands::List => commands::gear::list(&client, output).await,
                 GearCommands::Stats { uuid } => {
-                    commands::gear::stats(&client, &output, &uuid).await
+                    commands::gear::stats(&client, output, &uuid).await
                 }
                 GearCommands::Link { uuid, activity_id } => {
-                    commands::gear::link(&client, &output, &uuid, activity_id).await
+                    commands::gear::link(&client, output, &uuid, activity_id).await
                 }
             }
         }
 
         Commands::Records => {
             let client = GarminClient::new(require_auth()?)?;
-            commands::records::list(&client, &output).await
+            commands::records::list(&client, output).await
         }
 
         Commands::Calendar { year, month } => {
             let client = GarminClient::new(require_auth()?)?;
-            commands::calendar::month(&client, &output, year, month).await
+            commands::calendar::month(&client, output, year, month).await
         }
 
         Commands::Devices { command } => {
             let client = GarminClient::new(require_auth()?)?;
             match command {
-                DeviceCommands::List => commands::devices::list(&client, &output).await,
-                DeviceCommands::Get { id } => commands::devices::get(&client, &output, id).await,
+                DeviceCommands::List => commands::devices::list(&client, output).await,
+                DeviceCommands::Get { id } => commands::devices::get(&client, output, id).await,
             }
         }
-    };
-
-    if let Err(e) = result {
-        output.error(&e.to_string());
-        std::process::exit(1);
     }
-
-    Ok(())
 }
