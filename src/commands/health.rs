@@ -337,11 +337,13 @@ pub struct Steps {
 }
 
 fn steps_from(v: &serde_json::Value, date: &str) -> Steps {
+    // API returns an array; take first entry, or use value directly if object.
+    let entry = v.as_array().and_then(|a| a.first()).unwrap_or(v);
     Steps {
-        date: v["calendarDate"].as_str().unwrap_or(date).to_string(),
-        total_steps: v["totalSteps"].as_u64(),
-        step_goal: v["stepGoal"].as_u64(),
-        total_distance_meters: v["totalDistance"].as_f64(),
+        date: entry["calendarDate"].as_str().unwrap_or(date).to_string(),
+        total_steps: entry["totalSteps"].as_u64(),
+        step_goal: entry["stepGoal"].as_u64(),
+        total_distance_meters: entry["totalDistance"].as_f64(),
     }
 }
 

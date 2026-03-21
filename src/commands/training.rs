@@ -451,11 +451,16 @@ pub struct TrainingScore {
 }
 
 fn training_score_from(v: &serde_json::Value) -> TrainingScore {
+    let g = &v["generic"];
     TrainingScore {
-        date: v["calendarDate"].as_str().unwrap_or("").to_string(),
-        vo2max: v["generic"]["vo2MaxValue"].as_f64(),
-        vo2max_precise: v["generic"]["vo2MaxPreciseValue"].as_f64(),
-        fitness_age: v["generic"]["fitnessAge"].as_f64(),
+        date: g["calendarDate"]
+            .as_str()
+            .or(v["calendarDate"].as_str())
+            .unwrap_or("")
+            .to_string(),
+        vo2max: g["vo2MaxValue"].as_f64(),
+        vo2max_precise: g["vo2MaxPreciseValue"].as_f64(),
+        fitness_age: g["fitnessAge"].as_f64(),
     }
 }
 
@@ -852,31 +857,43 @@ pub struct LactateThreshold {
 }
 
 fn lactate_threshold_from(v: &serde_json::Value) -> LactateThreshold {
-    // Response is an array; find the first entry that has heartRate and speed
+    // Response is an array with potentially separate entries for HR and speed.
+    // Garmin splits them: one entry has hearRate, another has speed. Merge all.
     let entries = v.as_array();
-    let entry = entries
-        .and_then(|arr| {
-            arr.iter().find(|e| {
-                // Garmin uses "hearRate" (their typo)
-                (e.get("hearRate").is_some() || e.get("heartRate").is_some())
-                    && e.get("speed").is_some()
-            })
-        })
-        .or_else(|| entries.and_then(|arr| arr.first()));
 
-    let entry = entry.cloned().unwrap_or_else(|| {
-        // Maybe it's not an array at all
-        if v.is_object() {
-            v.clone()
-        } else {
-            serde_json::Value::Null
+    let mut hr: Option<i64> = None;
+    let mut speed: Option<f64> = None;
+    let mut date: Option<String> = None;
+
+    if let Some(arr) = entries {
+        for e in arr {
+            if hr.is_none() {
+                hr = e["hearRate"].as_i64().or(e["heartRate"].as_i64());
+            }
+            if speed.is_none() {
+                speed = e["speed"].as_f64().filter(|&s| s > 0.0);
+            }
+            if date.is_none() {
+                date = e["startTimestampLocal"]
+                    .as_str()
+                    .or(e["calendarDate"].as_str())
+                    .map(|s| s.chars().take(10).collect());
+            }
         }
-    });
+    } else if v.is_object() {
+        hr = v["hearRate"].as_i64().or(v["heartRate"].as_i64());
+        speed = v["speed"].as_f64().filter(|&s| s > 0.0);
+        date = v["startTimestampLocal"]
+            .as_str()
+            .or(v["calendarDate"].as_str())
+            .map(|s| s.chars().take(10).collect());
+    }
 
-    let hr = entry["hearRate"].as_i64().or(entry["heartRate"].as_i64());
-    let speed = entry["speed"].as_f64();
-    let pace = speed.filter(|&s| s > 0.0).map(|s| {
-        // speed is m/s, convert to min/km
+    // Garmin API returns LT speed ~10x too low (e.g. 0.386 instead of 3.86 m/s).
+    // Correct if value is implausibly small (< 1 m/s is walking speed).
+    speed = speed.map(|s| if s < 1.0 { s * 10.0 } else { s });
+
+    let pace = speed.map(|s| {
         let pace_secs = 1000.0 / s;
         let m = pace_secs as u64 / 60;
         let sec = pace_secs as u64 % 60;
@@ -884,10 +901,7 @@ fn lactate_threshold_from(v: &serde_json::Value) -> LactateThreshold {
     });
 
     LactateThreshold {
-        date: entry["startTimestampLocal"]
-            .as_str()
-            .or(entry["calendarDate"].as_str())
-            .map(|s| s.chars().take(10).collect()),
+        date,
         heart_rate: hr,
         speed_meters_per_second: speed,
         pace,
