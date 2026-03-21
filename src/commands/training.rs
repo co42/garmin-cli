@@ -658,6 +658,7 @@ pub async fn endurance_score(
 ) -> Result<()> {
     let end_date = date.map(String::from).unwrap_or_else(today);
     let days = days.unwrap_or(1);
+    let end = parse_date(&end_date)?;
 
     if days == 1 {
         let path = format!("/metrics-service/metrics/endurancescore?calendarDate={end_date}");
@@ -665,22 +666,23 @@ pub async fn endurance_score(
         let item = endurance_score_from(&v);
         output.print(&item);
     } else {
-        let end = parse_date(&end_date)?;
-        let start = end - chrono::Duration::days(days as i64 - 1);
-        let start_str = start.format("%Y-%m-%d").to_string();
-        let path = format!(
-            "/metrics-service/metrics/endurancescore/stats?startDate={start_str}&endDate={end_date}&aggregation=daily"
-        );
-        let v: serde_json::Value = client.get_json(&path).await?;
-        let items: Vec<EnduranceScore> = v
-            .as_array()
-            .map(|arr| arr.iter().map(endurance_score_from).collect())
-            .unwrap_or_else(|| vec![endurance_score_from(&v)]);
-        if items.len() == 1 {
-            output.print(&items[0]);
-        } else {
-            output.print_list(&items, "Endurance Score");
-        }
+        let futs: Vec<_> = (0..days)
+            .rev()
+            .map(|i| {
+                let d = end - chrono::Duration::days(i as i64);
+                let ds = d.format("%Y-%m-%d").to_string();
+                let path = format!("/metrics-service/metrics/endurancescore?calendarDate={ds}");
+                async move {
+                    let v: serde_json::Value = client.get_json(&path).await?;
+                    Ok(endurance_score_from(&v)) as Result<EnduranceScore>
+                }
+            })
+            .collect();
+        let items: Vec<EnduranceScore> = futures::future::join_all(futs)
+            .await
+            .into_iter()
+            .collect::<Result<_>>()?;
+        output.print_list(&items, "Endurance Score");
     }
     Ok(())
 }
@@ -740,6 +742,7 @@ pub async fn hill_score(
 ) -> Result<()> {
     let end_date = date.map(String::from).unwrap_or_else(today);
     let days = days.unwrap_or(1);
+    let end = parse_date(&end_date)?;
 
     if days == 1 {
         let path = format!("/metrics-service/metrics/hillscore?calendarDate={end_date}");
@@ -747,22 +750,23 @@ pub async fn hill_score(
         let item = hill_score_from(&v);
         output.print(&item);
     } else {
-        let end = parse_date(&end_date)?;
-        let start = end - chrono::Duration::days(days as i64 - 1);
-        let start_str = start.format("%Y-%m-%d").to_string();
-        let path = format!(
-            "/metrics-service/metrics/hillscore/stats?startDate={start_str}&endDate={end_date}&aggregation=daily"
-        );
-        let v: serde_json::Value = client.get_json(&path).await?;
-        let items: Vec<HillScore> = v
-            .as_array()
-            .map(|arr| arr.iter().map(hill_score_from).collect())
-            .unwrap_or_else(|| vec![hill_score_from(&v)]);
-        if items.len() == 1 {
-            output.print(&items[0]);
-        } else {
-            output.print_list(&items, "Hill Score");
-        }
+        let futs: Vec<_> = (0..days)
+            .rev()
+            .map(|i| {
+                let d = end - chrono::Duration::days(i as i64);
+                let ds = d.format("%Y-%m-%d").to_string();
+                let path = format!("/metrics-service/metrics/hillscore?calendarDate={ds}");
+                async move {
+                    let v: serde_json::Value = client.get_json(&path).await?;
+                    Ok(hill_score_from(&v)) as Result<HillScore>
+                }
+            })
+            .collect();
+        let items: Vec<HillScore> = futures::future::join_all(futs)
+            .await
+            .into_iter()
+            .collect::<Result<_>>()?;
+        output.print_list(&items, "Hill Score");
     }
     Ok(())
 }
