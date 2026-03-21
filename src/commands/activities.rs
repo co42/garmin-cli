@@ -29,6 +29,104 @@ pub struct ActivitySummary {
     pub max_hr: Option<f64>,
     pub avg_pace: Option<String>,
     pub pace_min_km: Option<String>,
+
+    // Training Effect & Load
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub aerobic_training_effect: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub anaerobic_training_effect: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub aerobic_training_effect_message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub anaerobic_training_effect_message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub training_effect_label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub activity_training_load: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub impact_load: Option<f64>,
+
+    // Performance
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vo2max_value: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avg_power: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub norm_power: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_power: Option<f64>,
+
+    // Running dynamics
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avg_running_cadence: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avg_stride_length: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avg_ground_contact_time: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avg_vertical_oscillation: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avg_vertical_ratio: Option<f64>,
+
+    // Elevation
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub elevation_gain: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub elevation_loss: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avg_grade_adjusted_speed: Option<f64>,
+
+    // Splits
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fastest_split_1000: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fastest_split_1609: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fastest_split_5000: Option<f64>,
+
+    // Misc
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub moderate_intensity_minutes: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vigorous_intensity_minutes: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub difference_body_battery: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub steps: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub location_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start_latitude: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start_longitude: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub moving_duration: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workout_id: Option<u64>,
+
+    // HR zones
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hr_time_in_zone_1: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hr_time_in_zone_2: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hr_time_in_zone_3: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hr_time_in_zone_4: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hr_time_in_zone_5: Option<f64>,
+
+    // Power zones
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub power_time_in_zone_1: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub power_time_in_zone_2: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub power_time_in_zone_3: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub power_time_in_zone_4: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub power_time_in_zone_5: Option<f64>,
 }
 
 impl HumanReadable for ActivitySummary {
@@ -61,6 +159,63 @@ impl HumanReadable for ActivitySummary {
         } else if let Some(ref pace) = self.avg_pace {
             println!("  Avg pace: {pace}");
         }
+
+        // Training Effect / Load / VO2max line
+        {
+            let mut parts = Vec::new();
+            if let (Some(aero), Some(anaero)) =
+                (self.aerobic_training_effect, self.anaerobic_training_effect)
+            {
+                parts.push(format!("TE: {aero:.1} aero / {anaero:.1} anaero"));
+            } else if let Some(aero) = self.aerobic_training_effect {
+                parts.push(format!("TE: {aero:.1} aero"));
+            }
+            if let Some(load) = self.activity_training_load {
+                parts.push(format!("Load: {load:.0}"));
+            }
+            if let Some(vo2) = self.vo2max_value {
+                parts.push(format!("VO2max: {vo2:.0}"));
+            }
+            if !parts.is_empty() {
+                println!("  {}", parts.join("  "));
+            }
+        }
+
+        // Elevation / Power line
+        {
+            let mut parts = Vec::new();
+            if let Some(gain) = self.elevation_gain {
+                let loss_str = self
+                    .elevation_loss
+                    .map(|l| format!(" / -{l:.0}m"))
+                    .unwrap_or_default();
+                parts.push(format!("Elev: +{gain:.0}m{loss_str}"));
+            }
+            if let Some(pwr) = self.avg_power {
+                parts.push(format!("Power: {pwr:.0}W"));
+            }
+            if !parts.is_empty() {
+                println!("  {}", parts.join("  "));
+            }
+        }
+
+        // Running dynamics line
+        {
+            let mut parts = Vec::new();
+            if let Some(cad) = self.avg_running_cadence {
+                parts.push(format!("Cadence: {cad:.0} spm"));
+            }
+            if let Some(gct) = self.avg_ground_contact_time {
+                parts.push(format!("GCT: {gct:.0}ms"));
+            }
+            if let Some(stride) = self.avg_stride_length {
+                parts.push(format!("Stride: {stride:.0}cm"));
+            }
+            if !parts.is_empty() {
+                println!("  {}", parts.join("  "));
+            }
+        }
+
         println!();
     }
 }
@@ -83,6 +238,65 @@ fn activity_from_list(a: &serde_json::Value) -> ActivitySummary {
         max_hr: a["maxHR"].as_f64(),
         avg_pace: a["averagePace"].as_str().map(Into::into),
         pace_min_km: compute_pace(distance_meters, duration_seconds),
+
+        // Training Effect & Load
+        aerobic_training_effect: a["aerobicTrainingEffect"].as_f64(),
+        anaerobic_training_effect: a["anaerobicTrainingEffect"].as_f64(),
+        aerobic_training_effect_message: a["aerobicTrainingEffectMessage"].as_str().map(Into::into),
+        anaerobic_training_effect_message: a["anaerobicTrainingEffectMessage"]
+            .as_str()
+            .map(Into::into),
+        training_effect_label: a["trainingEffectLabel"].as_str().map(Into::into),
+        activity_training_load: a["activityTrainingLoad"].as_f64(),
+        impact_load: a["impactLoad"].as_f64(),
+
+        // Performance
+        vo2max_value: a["vO2MaxValue"].as_f64(),
+        avg_power: a["avgPower"].as_f64(),
+        norm_power: a["normPower"].as_f64(),
+        max_power: a["maxPower"].as_f64(),
+
+        // Running dynamics
+        avg_running_cadence: a["avgRunningCadenceInStepsPerMinute"].as_f64(),
+        avg_stride_length: a["avgStrideLength"].as_f64(),
+        avg_ground_contact_time: a["avgGroundContactTime"].as_f64(),
+        avg_vertical_oscillation: a["avgVerticalOscillation"].as_f64(),
+        avg_vertical_ratio: a["avgVerticalRatio"].as_f64(),
+
+        // Elevation
+        elevation_gain: a["elevationGain"].as_f64(),
+        elevation_loss: a["elevationLoss"].as_f64(),
+        avg_grade_adjusted_speed: a["avgGradeAdjustedSpeed"].as_f64(),
+
+        // Splits
+        fastest_split_1000: a["fastestSplit_1000"].as_f64(),
+        fastest_split_1609: a["fastestSplit_1609"].as_f64(),
+        fastest_split_5000: a["fastestSplit_5000"].as_f64(),
+
+        // Misc
+        moderate_intensity_minutes: a["moderateIntensityMinutes"].as_f64(),
+        vigorous_intensity_minutes: a["vigorousIntensityMinutes"].as_f64(),
+        difference_body_battery: a["differenceBodyBattery"].as_f64(),
+        steps: a["steps"].as_u64(),
+        location_name: a["locationName"].as_str().map(Into::into),
+        start_latitude: a["startLatitude"].as_f64(),
+        start_longitude: a["startLongitude"].as_f64(),
+        moving_duration: a["movingDuration"].as_f64(),
+        workout_id: a["workoutId"].as_u64(),
+
+        // HR zones
+        hr_time_in_zone_1: a["hrTimeInZone_1"].as_f64(),
+        hr_time_in_zone_2: a["hrTimeInZone_2"].as_f64(),
+        hr_time_in_zone_3: a["hrTimeInZone_3"].as_f64(),
+        hr_time_in_zone_4: a["hrTimeInZone_4"].as_f64(),
+        hr_time_in_zone_5: a["hrTimeInZone_5"].as_f64(),
+
+        // Power zones
+        power_time_in_zone_1: a["powerTimeInZone_1"].as_f64(),
+        power_time_in_zone_2: a["powerTimeInZone_2"].as_f64(),
+        power_time_in_zone_3: a["powerTimeInZone_3"].as_f64(),
+        power_time_in_zone_4: a["powerTimeInZone_4"].as_f64(),
+        power_time_in_zone_5: a["powerTimeInZone_5"].as_f64(),
     }
 }
 
@@ -105,6 +319,68 @@ fn activity_from_detail(id: u64, v: &serde_json::Value) -> ActivitySummary {
         max_hr: s["maxHR"].as_f64(),
         avg_pace: None,
         pace_min_km: compute_pace(distance_meters, duration_seconds),
+
+        // Training Effect & Load
+        // Note: summaryDTO uses "trainingEffect" for aerobic (not "aerobicTrainingEffect")
+        aerobic_training_effect: s["trainingEffect"].as_f64(),
+        anaerobic_training_effect: s["anaerobicTrainingEffect"].as_f64(),
+        aerobic_training_effect_message: s["aerobicTrainingEffectMessage"].as_str().map(Into::into),
+        anaerobic_training_effect_message: s["anaerobicTrainingEffectMessage"]
+            .as_str()
+            .map(Into::into),
+        training_effect_label: s["trainingEffectLabel"].as_str().map(Into::into),
+        activity_training_load: s["activityTrainingLoad"].as_f64(),
+        impact_load: s["impactLoad"].as_f64(),
+
+        // Performance
+        vo2max_value: s["vO2MaxValue"].as_f64(),
+        // summaryDTO uses "averagePower" / "normalizedPower" / "maxPower"
+        avg_power: s["averagePower"].as_f64(),
+        norm_power: s["normalizedPower"].as_f64(),
+        max_power: s["maxPower"].as_f64(),
+
+        // Running dynamics
+        // summaryDTO uses "averageRunCadence" not "avgRunningCadenceInStepsPerMinute"
+        avg_running_cadence: s["averageRunCadence"].as_f64(),
+        avg_stride_length: s["strideLength"].as_f64(),
+        avg_ground_contact_time: s["groundContactTime"].as_f64(),
+        avg_vertical_oscillation: s["verticalOscillation"].as_f64(),
+        avg_vertical_ratio: s["verticalRatio"].as_f64(),
+
+        // Elevation
+        elevation_gain: s["elevationGain"].as_f64(),
+        elevation_loss: s["elevationLoss"].as_f64(),
+        avg_grade_adjusted_speed: s["avgGradeAdjustedSpeed"].as_f64(),
+
+        // Splits -- not available from detail endpoint
+        fastest_split_1000: None,
+        fastest_split_1609: None,
+        fastest_split_5000: None,
+
+        // Misc
+        moderate_intensity_minutes: s["moderateIntensityMinutes"].as_f64(),
+        vigorous_intensity_minutes: s["vigorousIntensityMinutes"].as_f64(),
+        difference_body_battery: s["differenceBodyBattery"].as_f64(),
+        steps: s["steps"].as_u64(),
+        location_name: None,
+        start_latitude: s["startLatitude"].as_f64(),
+        start_longitude: s["startLongitude"].as_f64(),
+        moving_duration: s["movingDuration"].as_f64(),
+        workout_id: v["workoutId"].as_u64(),
+
+        // HR zones -- not available from detail endpoint
+        hr_time_in_zone_1: None,
+        hr_time_in_zone_2: None,
+        hr_time_in_zone_3: None,
+        hr_time_in_zone_4: None,
+        hr_time_in_zone_5: None,
+
+        // Power zones -- not available from detail endpoint
+        power_time_in_zone_1: None,
+        power_time_in_zone_2: None,
+        power_time_in_zone_3: None,
+        power_time_in_zone_4: None,
+        power_time_in_zone_5: None,
     }
 }
 
@@ -203,6 +479,34 @@ pub async fn hr_zones(client: &GarminClient, output: &Output, id: u64) -> Result
 
 pub async fn splits(client: &GarminClient, output: &Output, id: u64) -> Result<()> {
     let path = format!("/activity-service/activity/{id}/splits");
+    let v: serde_json::Value = client.get_json(&path).await?;
+    output.print_value(&v);
+    Ok(())
+}
+
+pub async fn weather(client: &GarminClient, output: &Output, id: u64) -> Result<()> {
+    let path = format!("/activity-service/activity/{id}/weather");
+    let v: serde_json::Value = client.get_json(&path).await?;
+    output.print_value(&v);
+    Ok(())
+}
+
+pub async fn laps(client: &GarminClient, output: &Output, id: u64) -> Result<()> {
+    let path = format!("/activity-service/activity/{id}/laps");
+    let v: serde_json::Value = client.get_json(&path).await?;
+    output.print_value(&v);
+    Ok(())
+}
+
+pub async fn exercises(client: &GarminClient, output: &Output, id: u64) -> Result<()> {
+    let path = format!("/activity-service/activity/{id}/exerciseSets");
+    let v: serde_json::Value = client.get_json(&path).await?;
+    output.print_value(&v);
+    Ok(())
+}
+
+pub async fn power_zones(client: &GarminClient, output: &Output, id: u64) -> Result<()> {
+    let path = format!("/activity-service/activity/{id}/powerTimeInZones");
     let v: serde_json::Value = client.get_json(&path).await?;
     output.print_value(&v);
     Ok(())
@@ -307,6 +611,27 @@ fn build_delta(a1: &ActivitySummary, a2: &ActivitySummary) -> serde_json::Value 
     if let (Some(c1), Some(c2)) = (a1.calories, a2.calories) {
         delta.insert("calories".into(), serde_json::json!(c2 - c1));
     }
+    if let (Some(e1), Some(e2)) = (a1.elevation_gain, a2.elevation_gain) {
+        delta.insert("elevation_gain".into(), serde_json::json!(e2 - e1));
+    }
+    if let (Some(e1), Some(e2)) = (a1.elevation_loss, a2.elevation_loss) {
+        delta.insert("elevation_loss".into(), serde_json::json!(e2 - e1));
+    }
+    if let (Some(t1), Some(t2)) = (a1.aerobic_training_effect, a2.aerobic_training_effect) {
+        delta.insert("aerobic_training_effect".into(), serde_json::json!(t2 - t1));
+    }
+    if let (Some(t1), Some(t2)) = (a1.anaerobic_training_effect, a2.anaerobic_training_effect) {
+        delta.insert(
+            "anaerobic_training_effect".into(),
+            serde_json::json!(t2 - t1),
+        );
+    }
+    if let (Some(l1), Some(l2)) = (a1.activity_training_load, a2.activity_training_load) {
+        delta.insert("activity_training_load".into(), serde_json::json!(l2 - l1));
+    }
+    if let (Some(p1), Some(p2)) = (a1.avg_power, a2.avg_power) {
+        delta.insert("avg_power".into(), serde_json::json!(p2 - p1));
+    }
 
     serde_json::Value::Object(delta)
 }
@@ -341,6 +666,36 @@ fn print_comparison_human(a1: &ActivitySummary, a2: &ActivitySummary) {
         "Calories",
         &fmt_opt_f64(a1.calories),
         &fmt_opt_f64(a2.calories),
+    );
+    print_row(
+        "Elev Gain",
+        &fmt_opt_f64(a1.elevation_gain),
+        &fmt_opt_f64(a2.elevation_gain),
+    );
+    print_row(
+        "Elev Loss",
+        &fmt_opt_f64(a1.elevation_loss),
+        &fmt_opt_f64(a2.elevation_loss),
+    );
+    print_row(
+        "Aero TE",
+        &fmt_opt_f64(a1.aerobic_training_effect),
+        &fmt_opt_f64(a2.aerobic_training_effect),
+    );
+    print_row(
+        "Anaero TE",
+        &fmt_opt_f64(a1.anaerobic_training_effect),
+        &fmt_opt_f64(a2.anaerobic_training_effect),
+    );
+    print_row(
+        "Load",
+        &fmt_opt_f64(a1.activity_training_load),
+        &fmt_opt_f64(a2.activity_training_load),
+    );
+    print_row(
+        "Avg Power",
+        &fmt_opt_f64(a1.avg_power),
+        &fmt_opt_f64(a2.avg_power),
     );
 }
 
