@@ -1,6 +1,8 @@
 pub mod activities;
 pub mod auth;
+pub mod badges;
 pub mod calendar;
+pub mod courses;
 pub mod devices;
 pub mod gear;
 pub mod health;

@@ -102,6 +102,16 @@ enum Commands {
         #[command(subcommand)]
         command: WorkoutCommands,
     },
+    /// Courses (saved routes)
+    Courses {
+        #[command(subcommand)]
+        command: CourseCommands,
+    },
+    /// Earned badges and achievements
+    Badges {
+        #[command(subcommand)]
+        command: BadgeCommands,
+    },
     /// Gear (shoes, bikes, etc.)
     Gear {
         #[command(subcommand)]
@@ -384,6 +394,26 @@ enum ActivityCommands {
         /// Activity ID
         id: u64,
     },
+    /// Get weather conditions during an activity
+    Weather {
+        /// Activity ID
+        id: u64,
+    },
+    /// Get raw laps for an activity
+    Laps {
+        /// Activity ID
+        id: u64,
+    },
+    /// Get exercise sets (structured intervals)
+    Exercises {
+        /// Activity ID
+        id: u64,
+    },
+    /// Get power time in zones
+    PowerZones {
+        /// Activity ID
+        id: u64,
+    },
     /// Download activity file
     Download {
         /// Activity ID
@@ -503,6 +533,23 @@ enum DeviceCommands {
         /// Device ID
         id: u64,
     },
+}
+
+#[derive(Subcommand)]
+enum CourseCommands {
+    /// List saved courses
+    List,
+    /// Get course details
+    Get {
+        /// Course ID
+        id: u64,
+    },
+}
+
+#[derive(Subcommand)]
+enum BadgeCommands {
+    /// List earned badges
+    List,
 }
 
 fn require_auth() -> anyhow::Result<Tokens> {
@@ -782,6 +829,18 @@ async fn run(command: Commands, output: &Output) -> std::result::Result<(), Erro
                 ActivityCommands::HrZones { id } => {
                     commands::activities::hr_zones(&client, output, id).await
                 }
+                ActivityCommands::Weather { id } => {
+                    commands::activities::weather(&client, output, id).await
+                }
+                ActivityCommands::Laps { id } => {
+                    commands::activities::laps(&client, output, id).await
+                }
+                ActivityCommands::Exercises { id } => {
+                    commands::activities::exercises(&client, output, id).await
+                }
+                ActivityCommands::PowerZones { id } => {
+                    commands::activities::power_zones(&client, output, id).await
+                }
                 ActivityCommands::Download {
                     id,
                     format,
@@ -825,6 +884,21 @@ async fn run(command: Commands, output: &Output) -> std::result::Result<(), Erro
                     commands::workouts::template(output, kind);
                     Ok(())
                 }
+            }
+        }
+
+        Commands::Courses { command } => {
+            let client = GarminClient::new(require_auth()?)?;
+            match command {
+                CourseCommands::List => commands::courses::list(&client, output).await,
+                CourseCommands::Get { id } => commands::courses::get(&client, output, id).await,
+            }
+        }
+
+        Commands::Badges { command } => {
+            let client = GarminClient::new(require_auth()?)?;
+            match command {
+                BadgeCommands::List => commands::badges::list(&client, output).await,
             }
         }
 
