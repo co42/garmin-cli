@@ -61,18 +61,14 @@ pub async fn get(client: &GarminClient, output: &Output, id: u64) -> Result<()> 
         .get_json(&format!("/device-service/deviceregistration/devices/{id}"))
         .await?;
 
-    if output.is_json() {
-        output.print_value(&v);
-    } else {
-        let device = Device {
-            id,
-            device_name: v["displayName"].as_str().unwrap_or("Unknown").into(),
-            device_type: v["deviceTypeName"].as_str().unwrap_or("").into(),
-            serial_number: v["serialNumber"].as_str().map(Into::into),
-            firmware_version: v["currentFirmwareVersion"].as_str().map(Into::into),
-            last_sync: v["lastSyncTime"].as_str().map(Into::into),
-        };
-        output.print(&device);
-    }
+    let device = Device {
+        id,
+        device_name: v["displayName"].as_str().unwrap_or("Unknown").into(),
+        device_type: v["deviceTypeName"].as_str().unwrap_or("").into(),
+        serial_number: v["serialNumber"].as_str().map(Into::into),
+        firmware_version: v["currentFirmwareVersion"].as_str().map(Into::into),
+        last_sync: v["lastSyncTime"].as_str().map(Into::into),
+    };
+    output.print(&device);
     Ok(())
 }

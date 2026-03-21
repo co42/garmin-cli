@@ -446,20 +446,8 @@ pub async fn list(
 pub async fn get(client: &GarminClient, output: &Output, id: u64) -> Result<()> {
     let path = format!("/activity-service/activity/{id}");
     let v: serde_json::Value = client.get_json(&path).await?;
-
-    if output.is_json() {
-        // Inject computed pace into JSON output
-        let mut val = v.clone();
-        let duration = v["summary"]["duration"]["value"].as_f64().unwrap_or(0.0);
-        let distance = v["summary"]["distance"]["value"].as_f64();
-        if let Some(pace) = compute_pace(distance, duration) {
-            val["pace_min_km"] = serde_json::Value::String(pace);
-        }
-        output.print_value(&val);
-    } else {
-        let summary = activity_from_detail(id, &v);
-        output.print(&summary);
-    }
+    let summary = activity_from_detail(id, &v);
+    output.print(&summary);
     Ok(())
 }
 
@@ -470,33 +458,368 @@ pub async fn details(client: &GarminClient, output: &Output, id: u64) -> Result<
     Ok(())
 }
 
+// ── HR Zones ─────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+pub struct HrZone {
+    pub zone: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_hr: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seconds_in_zone: Option<f64>,
+}
+
+fn hr_zones_from_json(v: &serde_json::Value) -> Vec<HrZone> {
+    let arr = v.as_array();
+    let Some(items) = arr else {
+        return vec![];
+    };
+    items
+        .iter()
+        .map(|z| HrZone {
+            zone: z["zoneNumber"].as_i64().unwrap_or(0),
+            min_hr: z["zoneLowBoundary"].as_i64(),
+            seconds_in_zone: z["secsInZone"].as_f64(),
+        })
+        .collect()
+}
+
+impl HumanReadable for HrZone {
+    fn print_human(&self) {
+        let hr_label = self
+            .min_hr
+            .map(|h| format!("{h}+ bpm"))
+            .unwrap_or_else(|| "—".into());
+        let time = self
+            .seconds_in_zone
+            .map(|s| {
+                let m = (s / 60.0).floor() as u32;
+                let sec = (s % 60.0).round() as u32;
+                format!("{m}:{sec:02}")
+            })
+            .unwrap_or_else(|| "—".into());
+        println!(
+            "  Zone {}  {:>10}  {}",
+            format!("{}", self.zone).cyan(),
+            hr_label,
+            time.dimmed(),
+        );
+    }
+}
+
 pub async fn hr_zones(client: &GarminClient, output: &Output, id: u64) -> Result<()> {
     let path = format!("/activity-service/activity/{id}/hrTimeInZones");
     let v: serde_json::Value = client.get_json(&path).await?;
-    output.print_value(&v);
+    let zones = hr_zones_from_json(&v);
+    output.print_list(&zones, "HR Zones");
     Ok(())
+}
+
+// ── Splits ───────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+pub struct ActivitySplit {
+    pub split: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub distance_meters: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_seconds: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub moving_duration_seconds: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pace: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avg_hr: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_hr: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avg_power: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub norm_power: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avg_cadence: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avg_stride_length: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub elevation_gain: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub elevation_loss: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avg_ground_contact_time: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avg_vertical_oscillation: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avg_vertical_ratio: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub calories: Option<f64>,
+}
+
+fn splits_from_json(v: &serde_json::Value) -> Vec<ActivitySplit> {
+    let arr = v["lapDTOs"].as_array().or_else(|| v.as_array());
+    let Some(items) = arr else {
+        return vec![];
+    };
+    items
+        .iter()
+        .enumerate()
+        .map(|(i, s)| {
+            let distance = s["distance"].as_f64();
+            let duration = s["duration"].as_f64();
+            let pace = duration.and_then(|d| compute_pace(distance, d));
+            ActivitySplit {
+                split: (i + 1) as i64,
+                distance_meters: distance,
+                duration_seconds: duration,
+                moving_duration_seconds: s["movingDuration"].as_f64(),
+                pace,
+                avg_hr: s["averageHR"].as_f64(),
+                max_hr: s["maxHR"].as_f64(),
+                avg_power: s["averagePower"].as_f64(),
+                norm_power: s["normalizedPower"].as_f64(),
+                avg_cadence: s["averageRunCadence"].as_f64(),
+                avg_stride_length: s["strideLength"].as_f64(),
+                elevation_gain: s["elevationGain"].as_f64(),
+                elevation_loss: s["elevationLoss"].as_f64(),
+                avg_ground_contact_time: s["groundContactTime"].as_f64(),
+                avg_vertical_oscillation: s["verticalOscillation"].as_f64(),
+                avg_vertical_ratio: s["verticalRatio"].as_f64(),
+                calories: s["calories"].as_f64(),
+            }
+        })
+        .collect()
+}
+
+impl HumanReadable for ActivitySplit {
+    fn print_human(&self) {
+        let dist = self
+            .distance_meters
+            .map(|d| format!("{:.0}m", d))
+            .unwrap_or_else(|| "—".into());
+        let dur = self
+            .duration_seconds
+            .map(|s| {
+                let m = (s / 60.0).floor() as u32;
+                let sec = (s % 60.0).round() as u32;
+                format!("{m}:{sec:02}")
+            })
+            .unwrap_or_else(|| "—".into());
+        let pace = self.pace.as_deref().unwrap_or("—");
+        let hr = self
+            .avg_hr
+            .map(|h| format!("{:.0} bpm", h))
+            .unwrap_or_else(|| "—".into());
+        let elev = match (self.elevation_gain, self.elevation_loss) {
+            (Some(g), Some(l)) => format!("+{:.0}/-{:.0}m", g, l),
+            (Some(g), None) => format!("+{:.0}m", g),
+            _ => String::new(),
+        };
+        println!(
+            "  {:>3}  {:>7}  {:>6}  {:>10}  {:>8}  {}",
+            format!("#{}", self.split).cyan(),
+            dist,
+            dur,
+            pace,
+            hr.dimmed(),
+            elev.dimmed(),
+        );
+    }
 }
 
 pub async fn splits(client: &GarminClient, output: &Output, id: u64) -> Result<()> {
     let path = format!("/activity-service/activity/{id}/splits");
     let v: serde_json::Value = client.get_json(&path).await?;
-    output.print_value(&v);
+    let items = splits_from_json(&v);
+    output.print_list(&items, "Splits");
     Ok(())
+}
+
+// ── Weather ──────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+pub struct ActivityWeather {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temperature_celsius: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feels_like_celsius: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dew_point_celsius: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub humidity_percent: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wind_speed_kmh: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wind_gust_kmh: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wind_direction_degrees: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wind_direction_compass: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub weather_description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub station_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub latitude: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub longitude: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timestamp: Option<String>,
+}
+
+fn fahrenheit_to_celsius(f: f64) -> f64 {
+    (f - 32.0) * 5.0 / 9.0
+}
+
+fn mph_to_kmh(mph: f64) -> f64 {
+    mph * 1.60934
+}
+
+fn weather_from_json(v: &serde_json::Value) -> ActivityWeather {
+    ActivityWeather {
+        temperature_celsius: v["temp"].as_f64().map(fahrenheit_to_celsius),
+        feels_like_celsius: v["apparentTemp"].as_f64().map(fahrenheit_to_celsius),
+        dew_point_celsius: v["dewPoint"].as_f64().map(fahrenheit_to_celsius),
+        humidity_percent: v["relativeHumidity"].as_f64(),
+        wind_speed_kmh: v["windSpeed"].as_f64().map(mph_to_kmh),
+        wind_gust_kmh: v["windGust"].as_f64().map(mph_to_kmh),
+        wind_direction_degrees: v["windDirection"].as_i64(),
+        wind_direction_compass: v["windDirectionCompassPoint"].as_str().map(Into::into),
+        weather_description: v["weatherTypeDTO"]["desc"].as_str().map(Into::into),
+        station_name: v["weatherStationDTO"]["name"].as_str().map(Into::into),
+        latitude: v["latitude"].as_f64(),
+        longitude: v["longitude"].as_f64(),
+        timestamp: v["issueDate"].as_str().map(Into::into),
+    }
+}
+
+impl HumanReadable for ActivityWeather {
+    fn print_human(&self) {
+        println!("{}", "Weather".bold());
+        if let Some(temp) = self.temperature_celsius {
+            let feels = self
+                .feels_like_celsius
+                .map(|f| format!(" (feels like {f:.0}\u{b0}C)"))
+                .unwrap_or_default();
+            println!(
+                "  {:<14}{:.0}\u{b0}C{}",
+                "Temperature:".dimmed(),
+                temp,
+                feels
+            );
+        }
+        if let Some(hum) = self.humidity_percent {
+            println!("  {:<14}{:.0}%", "Humidity:".dimmed(), hum);
+        }
+        if let Some(wind) = self.wind_speed_kmh {
+            let dir = self.wind_direction_compass.as_deref().unwrap_or("");
+            println!("  {:<14}{:.0} km/h {}", "Wind:".dimmed(), wind, dir);
+        }
+        if let Some(ref desc) = self.weather_description {
+            println!("  {:<14}{}", "Conditions:".dimmed(), desc);
+        }
+        if let Some(ref station) = self.station_name {
+            println!("  {:<14}{}", "Station:".dimmed(), station);
+        }
+        println!();
+    }
 }
 
 pub async fn weather(client: &GarminClient, output: &Output, id: u64) -> Result<()> {
     let path = format!("/activity-service/activity/{id}/weather");
     let v: serde_json::Value = client.get_json(&path).await?;
-    output.print_value(&v);
+    let w = weather_from_json(&v);
+    output.print(&w);
     Ok(())
+}
+
+// ── Laps ─────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+pub struct ActivityLap {
+    pub lap_number: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub distance_meters: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_seconds: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pace: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avg_hr: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_hr: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub elevation_gain: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avg_cadence: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avg_power: Option<f64>,
+}
+
+fn laps_from_json(v: &serde_json::Value) -> Vec<ActivityLap> {
+    let arr = v["lapDTOs"].as_array().or_else(|| v.as_array());
+    let Some(items) = arr else {
+        return vec![];
+    };
+    items
+        .iter()
+        .enumerate()
+        .map(|(i, lap)| {
+            let distance = lap["distance"].as_f64();
+            let duration = lap["duration"].as_f64();
+            let pace = duration.and_then(|d| compute_pace(distance, d));
+            ActivityLap {
+                lap_number: (i + 1) as i64,
+                distance_meters: distance,
+                duration_seconds: duration,
+                pace,
+                avg_hr: lap["averageHR"].as_f64(),
+                max_hr: lap["maxHR"].as_f64(),
+                elevation_gain: lap["elevationGain"].as_f64(),
+                avg_cadence: lap["averageRunCadence"].as_f64(),
+                avg_power: lap["averagePower"].as_f64(),
+            }
+        })
+        .collect()
+}
+
+impl HumanReadable for ActivityLap {
+    fn print_human(&self) {
+        let dist = self
+            .distance_meters
+            .map(|d| format!("{:.0}m", d))
+            .unwrap_or_else(|| "\u{2014}".into());
+        let dur = self
+            .duration_seconds
+            .map(|s| {
+                let m = (s / 60.0).floor() as u32;
+                let sec = (s % 60.0).round() as u32;
+                format!("{m}:{sec:02}")
+            })
+            .unwrap_or_else(|| "\u{2014}".into());
+        let pace = self.pace.as_deref().unwrap_or("\u{2014}");
+        let hr = self
+            .avg_hr
+            .map(|h| format!("{:.0} bpm", h))
+            .unwrap_or_else(|| "\u{2014}".into());
+        println!(
+            "  {:>3}  {:>7}  {:>6}  {:>10}  {}",
+            format!("#{}", self.lap_number).cyan(),
+            dist,
+            dur,
+            pace,
+            hr.dimmed(),
+        );
+    }
 }
 
 pub async fn laps(client: &GarminClient, output: &Output, id: u64) -> Result<()> {
     let path = format!("/activity-service/activity/{id}/laps");
     let v: serde_json::Value = client.get_json(&path).await?;
-    output.print_value(&v);
+    let items = laps_from_json(&v);
+    output.print_list(&items, "Laps");
     Ok(())
 }
+
+// ── Exercises (raw passthrough — too variable) ───────────────────────
 
 pub async fn exercises(client: &GarminClient, output: &Output, id: u64) -> Result<()> {
     let path = format!("/activity-service/activity/{id}/exerciseSets");
@@ -505,10 +828,81 @@ pub async fn exercises(client: &GarminClient, output: &Output, id: u64) -> Resul
     Ok(())
 }
 
+// ── Power Zones ──────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+pub struct PowerZone {
+    pub zone: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_watts: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_watts: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seconds_in_zone: Option<f64>,
+}
+
+fn power_zones_from_json(v: &serde_json::Value) -> Vec<PowerZone> {
+    // API returns an array; each element may have a "zones" sub-array, or be the zone itself.
+    let items = v.as_array().and_then(|arr| {
+        if arr.is_empty() {
+            return None;
+        }
+        // Try nested "zones" first (common response shape)
+        arr[0]["zones"]
+            .as_array()
+            .cloned()
+            .or_else(|| Some(arr.clone()))
+    });
+    let Some(zones) = items else {
+        return vec![];
+    };
+    zones
+        .iter()
+        .enumerate()
+        .map(|(i, z)| PowerZone {
+            zone: z["zone"].as_i64().unwrap_or((i + 1) as i64),
+            min_watts: z["zoneLowBoundary"]
+                .as_f64()
+                .or_else(|| z["minWatts"].as_f64()),
+            max_watts: z["zoneHighBoundary"]
+                .as_f64()
+                .or_else(|| z["maxWatts"].as_f64()),
+            seconds_in_zone: z["secsInZone"]
+                .as_f64()
+                .or_else(|| z["secondsInZone"].as_f64()),
+        })
+        .collect()
+}
+
+impl HumanReadable for PowerZone {
+    fn print_human(&self) {
+        let range = match (self.min_watts, self.max_watts) {
+            (Some(lo), Some(hi)) => format!("{:.0}–{:.0}W", lo, hi),
+            (Some(lo), None) => format!("{:.0}W+", lo),
+            _ => "\u{2014}".into(),
+        };
+        let time = self
+            .seconds_in_zone
+            .map(|s| {
+                let m = (s / 60.0).floor() as u32;
+                let sec = (s % 60.0).round() as u32;
+                format!("{m}:{sec:02}")
+            })
+            .unwrap_or_else(|| "\u{2014}".into());
+        println!(
+            "  Zone {:>1}  {:>14}  {}",
+            format!("{}", self.zone).cyan(),
+            range,
+            time.dimmed(),
+        );
+    }
+}
+
 pub async fn power_zones(client: &GarminClient, output: &Output, id: u64) -> Result<()> {
     let path = format!("/activity-service/activity/{id}/powerTimeInZones");
     let v: serde_json::Value = client.get_json(&path).await?;
-    output.print_value(&v);
+    let zones = power_zones_from_json(&v);
+    output.print_list(&zones, "Power Zones");
     Ok(())
 }
 
