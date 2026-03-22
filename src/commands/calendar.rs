@@ -10,6 +10,8 @@ pub struct CalendarItem {
     pub id: u64,
     pub item_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub workout_id: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub date: Option<String>,
@@ -24,6 +26,7 @@ pub struct CalendarItem {
 fn calendar_item_from_json(v: &serde_json::Value) -> CalendarItem {
     CalendarItem {
         id: v["id"].as_u64().unwrap_or(0),
+        workout_id: v["workoutId"].as_u64(),
         item_type: v["itemType"]
             .as_str()
             .or_else(|| v["calendarItemType"].as_str())
