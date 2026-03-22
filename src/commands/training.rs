@@ -278,7 +278,7 @@ pub struct TrainingReadiness {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub feedback: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub recovery_time_hours: Option<i64>,
+    pub recovery_time_minutes: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hrv_weekly_average: Option<i64>,
     // Factor breakdown
@@ -324,7 +324,7 @@ fn training_readiness_from(v: &serde_json::Value, date: &str) -> TrainingReadine
         score: entry["score"].as_i64(),
         level: entry["level"].as_str().map(Into::into),
         feedback: entry["feedbackShort"].as_str().map(Into::into),
-        recovery_time_hours: entry["recoveryTime"].as_i64(),
+        recovery_time_minutes: entry["recoveryTime"].as_i64(),
         hrv_weekly_average: entry["hrvWeeklyAverage"].as_i64(),
         hrv_score: entry["hrvFactorPercent"].as_i64(),
         hrv_feedback: entry["hrvFactorFeedback"].as_str().map(Into::into),
@@ -362,8 +362,10 @@ impl HumanReadable for TrainingReadiness {
         }
 
         let mut parts = Vec::new();
-        if let Some(rt) = self.recovery_time_hours {
-            parts.push(format!("Recovery time: {rt}h"));
+        if let Some(rt) = self.recovery_time_minutes {
+            let h = rt / 60;
+            let m = rt % 60;
+            parts.push(format!("Recovery time: {h}h{m:02}"));
         }
         if let Some(hrv) = self.hrv_weekly_average {
             parts.push(format!("HRV weekly: {hrv}ms"));
