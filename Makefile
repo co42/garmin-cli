@@ -34,7 +34,7 @@ release:
 	@echo "=== Updating homebrew formula ==="
 	@SHA_ARM=$$(gh release view v$(VERSION) -R $(REPO) --json assets -q '.assets[] | select(.name | contains("aarch64-apple-darwin")) | .digest' | sed 's/sha256://') && \
 		SHA_X86_MAC=$$(gh release view v$(VERSION) -R $(REPO) --json assets -q '.assets[] | select(.name | contains("x86_64-apple-darwin")) | .digest' | sed 's/sha256://') && \
-		SHA_LINUX=$$(gh release view v$(VERSION) -R $(REPO) --json assets -q '.assets[] | select(.name | contains("x86_64-unknown-linux-gnu")) | .digest' | sed 's/sha256://') && \
+		SHA_LINUX=$$(gh release view v$(VERSION) -R $(REPO) --json assets -q '.assets[] | select(.name | contains("x86_64-unknown-linux-musl")) | .digest' | sed 's/sha256://') && \
 		echo "SHA256 aarch64-apple-darwin: $$SHA_ARM" && \
 		echo "SHA256 x86_64-apple-darwin:  $$SHA_X86_MAC" && \
 		echo "SHA256 x86_64-unknown-linux: $$SHA_LINUX" && \
