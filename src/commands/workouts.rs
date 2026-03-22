@@ -90,9 +90,105 @@ pub async fn list(client: &GarminClient, output: &Output, limit: u32, start: u32
 pub async fn get(client: &GarminClient, output: &Output, id: u64) -> Result<()> {
     let path = format!("/workout-service/workout/{id}");
     let v: serde_json::Value = client.get_json(&path).await?;
-    let workout = workout_from_json(&v);
-    output.print(&workout);
+    if output.is_json() {
+        // In JSON mode, return the full API response (includes steps)
+        output.print_value(&v);
+    } else {
+        let workout = workout_from_json(&v);
+        workout.print_human();
+        // Print step structure
+        if let Some(segments) = v["workoutSegments"].as_array() {
+            for seg in segments {
+                if let Some(steps) = seg["workoutSteps"].as_array() {
+                    print_steps(steps, 1);
+                }
+            }
+        }
+    }
     Ok(())
+}
+
+fn print_steps(steps: &[serde_json::Value], indent: usize) {
+    let pad = "  ".repeat(indent);
+    for step in steps {
+        let step_type = step["type"].as_str().unwrap_or("");
+        if step_type == "RepeatGroupDTO" {
+            let iters = step["numberOfIterations"].as_u64().unwrap_or(0);
+            println!("{pad}{}", format!("Repeat {iters}x:").yellow());
+            if let Some(sub) = step["workoutSteps"].as_array() {
+                print_steps(sub, indent + 1);
+            }
+        } else {
+            let kind = step["stepType"]["stepTypeKey"].as_str().unwrap_or("?");
+            let desc = step["description"].as_str().unwrap_or("");
+            let end_type = step["endCondition"]["conditionTypeKey"]
+                .as_str()
+                .unwrap_or("?");
+            let end_val = step["endConditionValue"].as_f64().unwrap_or(0.0);
+
+            let end_str = match end_type {
+                "distance" => format!("{:.0}m", end_val),
+                "time" => {
+                    let secs = end_val as u64;
+                    if secs >= 60 {
+                        format!("{}:{:02}", secs / 60, secs % 60)
+                    } else {
+                        format!("{secs}s")
+                    }
+                }
+                "lap.button" => "lap button".into(),
+                _ => format!("{end_val} {end_type}"),
+            };
+
+            let target_str = format_target(step);
+
+            let kind_colored = match kind {
+                "warmup" => "Warm Up".green().to_string(),
+                "cooldown" => "Cool Down".green().to_string(),
+                "interval" => "Run".yellow().bold().to_string(),
+                "recovery" => "Recover".cyan().to_string(),
+                "rest" => "Rest".dimmed().to_string(),
+                other => other.to_string(),
+            };
+
+            let mut line = format!("{pad}{kind_colored} — {end_str}");
+            if !target_str.is_empty() {
+                line.push_str(&format!(" @ {target_str}"));
+            }
+            if !desc.is_empty() {
+                line.push_str(&format!("  {}", desc.dimmed()));
+            }
+            println!("{line}");
+        }
+    }
+}
+
+fn format_target(step: &serde_json::Value) -> String {
+    let target_key = step["targetType"]["workoutTargetTypeKey"]
+        .as_str()
+        .unwrap_or("");
+    let v1 = step["targetValueOne"].as_f64();
+    let v2 = step["targetValueTwo"].as_f64();
+
+    match target_key {
+        "pace.zone" => {
+            let fmt_pace = |secs: f64| -> String {
+                let s = secs as u64;
+                format!("{}:{:02}/km", s / 60, s % 60)
+            };
+            match (v1, v2) {
+                (Some(a), Some(b)) => format!("{}-{}", fmt_pace(a), fmt_pace(b)),
+                _ => "pace target".into(),
+            }
+        }
+        "heart.rate.zone" => match (v1, v2) {
+            (Some(a), Some(b)) if a == b => format!("HR Z{}", a as u32),
+            (Some(a), Some(b)) => format!("HR Z{}-Z{}", a as u32, b as u32),
+            _ => "HR target".into(),
+        },
+        "" => String::new(),
+        other => other.to_string(),
+    }
 }
 
 pub async fn create(client: &GarminClient, output: &Output, file: &str) -> Result<()> {
@@ -117,6 +213,32 @@ pub async fn schedule(client: &GarminClient, output: &Output, id: u64, date: &st
     Ok(())
 }
 
+pub async fn update(client: &GarminClient, output: &Output, id: u64, file: &str) -> Result<()> {
+    let data = std::fs::read_to_string(file)?;
+    let body: serde_json::Value = serde_json::from_str(&data)?;
+    let path = format!("/workout-service/workout/{id}");
+    // PUT returns 204 No Content on success
+    client.put(&path, &body).await?;
+    // Fetch the updated workout to show the result
+    let updated: serde_json::Value = client
+        .get_json(&format!("/workout-service/workout/{id}"))
+        .await?;
+    if output.is_json() {
+        output.print_value(&updated);
+    } else {
+        let workout = workout_from_json(&updated);
+        workout.print_human();
+        if let Some(segments) = updated["workoutSegments"].as_array() {
+            for seg in segments {
+                if let Some(steps) = seg["workoutSteps"].as_array() {
+                    print_steps(steps, 1);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 pub async fn delete(client: &GarminClient, output: &Output, id: u64) -> Result<()> {
     let path = format!("/workout-service/workout/{id}");
     client.delete(&path).await?;
@@ -127,71 +249,146 @@ pub async fn delete(client: &GarminClient, output: &Output, id: u64) -> Result<(
     Ok(())
 }
 
+// Garmin API IDs reference:
+//   stepTypeId:     1=warmup, 2=cooldown, 3=interval, 4=recovery, 5=rest
+//   conditionTypeId: 1=lap.button, 2=time, 3=distance
+//   targetTypeId:   4=heart.rate.zone, 6=pace.zone
+//   Pace targets:   seconds per km (e.g. 265 = 4:25/km)
+//   HR targets:     zone numbers (1-5)
+
 /// Print a hardcoded workout template to stdout.
 pub fn template(output: &Output, kind: &str) {
     let value = match kind {
         "interval" => serde_json::json!({
             "workoutName": "Interval Workout",
             "sportType": { "sportTypeId": 1, "sportTypeKey": "running" },
-            "workoutSegments": [
-                {
-                    "segmentOrder": 1,
-                    "sportType": { "sportTypeId": 1, "sportTypeKey": "running" },
-                    "workoutSteps": [
-                        { "type": "ExecutableStepDTO", "stepOrder": 1, "stepType": { "stepTypeKey": "warmup" }, "endCondition": { "conditionTypeKey": "time" }, "endConditionValue": 600 },
-                        { "type": "RepeatGroupDTO", "stepOrder": 2, "numberOfIterations": 6, "workoutSteps": [
-                            { "type": "ExecutableStepDTO", "stepOrder": 1, "stepType": { "stepTypeKey": "interval" }, "endCondition": { "conditionTypeKey": "distance" }, "endConditionValue": 400 },
-                            { "type": "ExecutableStepDTO", "stepOrder": 2, "stepType": { "stepTypeKey": "recovery" }, "endCondition": { "conditionTypeKey": "time" }, "endConditionValue": 90 }
-                        ]},
-                        { "type": "ExecutableStepDTO", "stepOrder": 3, "stepType": { "stepTypeKey": "cooldown" }, "endCondition": { "conditionTypeKey": "time" }, "endConditionValue": 600 }
-                    ]
-                }
-            ]
+            "workoutSegments": [{
+                "segmentOrder": 1,
+                "sportType": { "sportTypeId": 1, "sportTypeKey": "running" },
+                "workoutSteps": [
+                    {
+                        "type": "ExecutableStepDTO", "stepOrder": 1,
+                        "stepType": { "stepTypeId": 1, "stepTypeKey": "warmup" },
+                        "endCondition": { "conditionTypeId": 3, "conditionTypeKey": "distance" },
+                        "endConditionValue": 2000,
+                        "description": "Z1-Z2 Warm up"
+                    },
+                    {
+                        "type": "RepeatGroupDTO", "stepOrder": 2,
+                        "numberOfIterations": 6,
+                        "workoutSteps": [
+                            {
+                                "type": "ExecutableStepDTO", "stepOrder": 1,
+                                "stepType": { "stepTypeId": 3, "stepTypeKey": "interval" },
+                                "endCondition": { "conditionTypeId": 3, "conditionTypeKey": "distance" },
+                                "endConditionValue": 400,
+                                "targetType": { "workoutTargetTypeId": 6, "workoutTargetTypeKey": "pace.zone" },
+                                "targetValueOne": 225, "targetValueTwo": 255,
+                                "description": "Z5 VO2max"
+                            },
+                            {
+                                "type": "ExecutableStepDTO", "stepOrder": 2,
+                                "stepType": { "stepTypeId": 4, "stepTypeKey": "recovery" },
+                                "endCondition": { "conditionTypeId": 2, "conditionTypeKey": "time" },
+                                "endConditionValue": 90,
+                                "description": "Recovery jog"
+                            }
+                        ]
+                    },
+                    {
+                        "type": "ExecutableStepDTO", "stepOrder": 3,
+                        "stepType": { "stepTypeId": 2, "stepTypeKey": "cooldown" },
+                        "endCondition": { "conditionTypeId": 3, "conditionTypeKey": "distance" },
+                        "endConditionValue": 2000,
+                        "description": "Z1-Z2 Cool down"
+                    }
+                ]
+            }]
         }),
         "tempo" => serde_json::json!({
             "workoutName": "Tempo Run",
             "sportType": { "sportTypeId": 1, "sportTypeKey": "running" },
-            "workoutSegments": [
-                {
-                    "segmentOrder": 1,
-                    "sportType": { "sportTypeId": 1, "sportTypeKey": "running" },
-                    "workoutSteps": [
-                        { "type": "ExecutableStepDTO", "stepOrder": 1, "stepType": { "stepTypeKey": "warmup" }, "endCondition": { "conditionTypeKey": "time" }, "endConditionValue": 900 },
-                        { "type": "ExecutableStepDTO", "stepOrder": 2, "stepType": { "stepTypeKey": "interval" }, "endCondition": { "conditionTypeKey": "time" }, "endConditionValue": 1200, "targetType": { "workoutTargetTypeKey": "pace.zone" } },
-                        { "type": "ExecutableStepDTO", "stepOrder": 3, "stepType": { "stepTypeKey": "cooldown" }, "endCondition": { "conditionTypeKey": "time" }, "endConditionValue": 600 }
-                    ]
-                }
-            ]
+            "workoutSegments": [{
+                "segmentOrder": 1,
+                "sportType": { "sportTypeId": 1, "sportTypeKey": "running" },
+                "workoutSteps": [
+                    {
+                        "type": "ExecutableStepDTO", "stepOrder": 1,
+                        "stepType": { "stepTypeId": 1, "stepTypeKey": "warmup" },
+                        "endCondition": { "conditionTypeId": 3, "conditionTypeKey": "distance" },
+                        "endConditionValue": 2000,
+                        "description": "Z1-Z2 Warm up"
+                    },
+                    {
+                        "type": "ExecutableStepDTO", "stepOrder": 2,
+                        "stepType": { "stepTypeId": 3, "stepTypeKey": "interval" },
+                        "endCondition": { "conditionTypeId": 2, "conditionTypeKey": "time" },
+                        "endConditionValue": 1200,
+                        "targetType": { "workoutTargetTypeId": 6, "workoutTargetTypeKey": "pace.zone" },
+                        "targetValueOne": 265, "targetValueTwo": 285,
+                        "description": "Z4 Threshold"
+                    },
+                    {
+                        "type": "ExecutableStepDTO", "stepOrder": 3,
+                        "stepType": { "stepTypeId": 2, "stepTypeKey": "cooldown" },
+                        "endCondition": { "conditionTypeId": 3, "conditionTypeKey": "distance" },
+                        "endConditionValue": 2000,
+                        "description": "Z1-Z2 Cool down"
+                    }
+                ]
+            }]
         }),
         "easy" => serde_json::json!({
             "workoutName": "Easy Run",
             "sportType": { "sportTypeId": 1, "sportTypeKey": "running" },
-            "workoutSegments": [
-                {
-                    "segmentOrder": 1,
-                    "sportType": { "sportTypeId": 1, "sportTypeKey": "running" },
-                    "workoutSteps": [
-                        { "type": "ExecutableStepDTO", "stepOrder": 1, "stepType": { "stepTypeKey": "warmup" }, "endCondition": { "conditionTypeKey": "time" }, "endConditionValue": 300 },
-                        { "type": "ExecutableStepDTO", "stepOrder": 2, "stepType": { "stepTypeKey": "interval" }, "endCondition": { "conditionTypeKey": "time" }, "endConditionValue": 2400, "targetType": { "workoutTargetTypeKey": "heart.rate.zone" }, "targetValueOne": 1, "targetValueTwo": 2 },
-                        { "type": "ExecutableStepDTO", "stepOrder": 3, "stepType": { "stepTypeKey": "cooldown" }, "endCondition": { "conditionTypeKey": "time" }, "endConditionValue": 300 }
-                    ]
-                }
-            ]
+            "workoutSegments": [{
+                "segmentOrder": 1,
+                "sportType": { "sportTypeId": 1, "sportTypeKey": "running" },
+                "workoutSteps": [
+                    {
+                        "type": "ExecutableStepDTO", "stepOrder": 1,
+                        "stepType": { "stepTypeId": 3, "stepTypeKey": "interval" },
+                        "endCondition": { "conditionTypeId": 3, "conditionTypeKey": "distance" },
+                        "endConditionValue": 8000,
+                        "targetType": { "workoutTargetTypeId": 4, "workoutTargetTypeKey": "heart.rate.zone" },
+                        "targetValueOne": 1, "targetValueTwo": 2,
+                        "description": "Z1-Z2 Easy"
+                    }
+                ]
+            }]
         }),
         _ /* long_run */ => serde_json::json!({
             "workoutName": "Long Run",
             "sportType": { "sportTypeId": 1, "sportTypeKey": "running" },
-            "workoutSegments": [
-                {
-                    "segmentOrder": 1,
-                    "sportType": { "sportTypeId": 1, "sportTypeKey": "running" },
-                    "workoutSteps": [
-                        { "type": "ExecutableStepDTO", "stepOrder": 1, "stepType": { "stepTypeKey": "warmup" }, "endCondition": { "conditionTypeKey": "time" }, "endConditionValue": 600 },
-                        { "type": "ExecutableStepDTO", "stepOrder": 2, "stepType": { "stepTypeKey": "interval" }, "endCondition": { "conditionTypeKey": "distance" }, "endConditionValue": 20000 },
-                        { "type": "ExecutableStepDTO", "stepOrder": 3, "stepType": { "stepTypeKey": "cooldown" }, "endCondition": { "conditionTypeKey": "time" }, "endConditionValue": 600 }
-                    ]
-                }
-            ]
+            "workoutSegments": [{
+                "segmentOrder": 1,
+                "sportType": { "sportTypeId": 1, "sportTypeKey": "running" },
+                "workoutSteps": [
+                    {
+                        "type": "ExecutableStepDTO", "stepOrder": 1,
+                        "stepType": { "stepTypeId": 1, "stepTypeKey": "warmup" },
+                        "endCondition": { "conditionTypeId": 3, "conditionTypeKey": "distance" },
+                        "endConditionValue": 2000,
+                        "description": "Z1-Z2 Warm up"
+                    },
+                    {
+                        "type": "ExecutableStepDTO", "stepOrder": 2,
+                        "stepType": { "stepTypeId": 3, "stepTypeKey": "interval" },
+                        "endCondition": { "conditionTypeId": 3, "conditionTypeKey": "distance" },
+                        "endConditionValue": 16000,
+                        "targetType": { "workoutTargetTypeId": 4, "workoutTargetTypeKey": "heart.rate.zone" },
+                        "targetValueOne": 2, "targetValueTwo": 2,
+                        "description": "Z2 Endurance"
+                    },
+                    {
+                        "type": "ExecutableStepDTO", "stepOrder": 3,
+                        "stepType": { "stepTypeId": 2, "stepTypeKey": "cooldown" },
+                        "endCondition": { "conditionTypeId": 3, "conditionTypeKey": "distance" },
+                        "endConditionValue": 2000,
+                        "description": "Z1 Cool down"
+                    }
+                ]
+            }]
         }),
     };
 

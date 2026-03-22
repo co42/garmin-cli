@@ -485,6 +485,14 @@ enum WorkoutCommands {
         /// Date (YYYY-MM-DD)
         date: String,
     },
+    /// Update an existing workout from JSON file
+    Update {
+        /// Workout ID
+        id: u64,
+        /// Path to workout JSON file
+        #[arg(long, short)]
+        file: String,
+    },
     /// Delete a workout
     Delete {
         /// Workout ID
@@ -870,6 +878,9 @@ async fn run(command: Commands, output: &Output) -> std::result::Result<(), Erro
                 }
                 WorkoutCommands::Schedule { id, date } => {
                     commands::workouts::schedule(&client, output, id, &date).await
+                }
+                WorkoutCommands::Update { id, file } => {
+                    commands::workouts::update(&client, output, id, &file).await
                 }
                 WorkoutCommands::Delete { id } => {
                     commands::workouts::delete(&client, output, id).await

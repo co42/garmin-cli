@@ -98,6 +98,67 @@ impl GarminClient {
         Ok(resp.json().await?)
     }
 
+    /// PUT JSON and return parsed response
+    pub async fn put_json<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        body: &serde_json::Value,
+    ) -> Result<T> {
+        let token = self.access_token().await?;
+        let url = if path.starts_with("http") {
+            path.to_string()
+        } else {
+            format!("{CONNECT_API}{path}")
+        };
+
+        let resp = self
+            .http
+            .put(&url)
+            .header(AUTHORIZATION, format!("Bearer {token}"))
+            .json(body)
+            .send()
+            .await?;
+
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(Error::Api(format!("{status}: {text}")));
+        }
+
+        serde_json::from_str(&text).map_err(|e| {
+            Error::Api(format!(
+                "error decoding response (status {status}): {e}\nBody: {}",
+                &text[..text.len().min(500)]
+            ))
+        })
+    }
+
+    /// PUT with no response body expected
+    pub async fn put(&self, path: &str, body: &serde_json::Value) -> Result<()> {
+        let token = self.access_token().await?;
+        let url = if path.starts_with("http") {
+            path.to_string()
+        } else {
+            format!("{CONNECT_API}{path}")
+        };
+
+        let resp = self
+            .http
+            .put(&url)
+            .header(AUTHORIZATION, format!("Bearer {token}"))
+            .json(body)
+            .send()
+            .await?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(Error::Api(format!("{status}: {body}")));
+        }
+
+        Ok(())
+    }
+
     /// POST with no response body expected
     pub async fn post(&self, path: &str, body: &serde_json::Value) -> Result<()> {
         let token = self.access_token().await?;
