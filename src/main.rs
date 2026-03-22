@@ -121,12 +121,17 @@ enum Commands {
     Records,
     /// Calendar (scheduled workouts, activities)
     Calendar {
+        #[command(subcommand)]
+        command: Option<CalendarCommands>,
         /// Year (defaults to current)
-        #[arg(long)]
+        #[arg(long, global = true)]
         year: Option<u32>,
         /// Month (1-12, defaults to current)
-        #[arg(long)]
+        #[arg(long, global = true)]
         month: Option<u32>,
+        /// Show next N weeks (spans months automatically)
+        #[arg(long, global = true)]
+        weeks: Option<u32>,
     },
     /// Devices
     Devices {
@@ -454,6 +459,15 @@ impl std::fmt::Display for DownloadFormat {
             Self::Tcx => write!(f, "tcx"),
         }
     }
+}
+
+#[derive(Subcommand)]
+enum CalendarCommands {
+    /// Remove a scheduled workout from the calendar
+    Delete {
+        /// Calendar entry ID
+        id: u64,
+    },
 }
 
 #[derive(Subcommand)]
@@ -929,9 +943,19 @@ async fn run(command: Commands, output: &Output) -> std::result::Result<(), Erro
             commands::records::list(&client, output).await
         }
 
-        Commands::Calendar { year, month } => {
+        Commands::Calendar {
+            command,
+            year,
+            month,
+            weeks,
+        } => {
             let client = GarminClient::new(require_auth()?)?;
-            commands::calendar::month(&client, output, year, month).await
+            match command {
+                Some(CalendarCommands::Delete { id }) => {
+                    commands::calendar::delete(&client, output, id).await
+                }
+                None => commands::calendar::list(&client, output, year, month, weeks).await,
+            }
         }
 
         Commands::Devices { command } => {

@@ -164,11 +164,22 @@ garmin badges list                     # Earned achievements
 
 ```bash
 garmin workouts list [--limit 20]
-garmin workouts get <ID>
+garmin workouts get <ID>               # Summary + full step structure
 garmin workouts create --file workout.json
+garmin workouts update <ID> --file workout.json
 garmin workouts schedule <ID> <DATE>
 garmin workouts delete <ID>
 garmin workouts template [--type interval|tempo|easy|long-run]
+```
+
+`get` shows the full step structure in human mode (step types, targets, descriptions, repeat groups) and returns the raw API response in JSON mode. Templates include all required API IDs and description fields — they can be used directly with `create`.
+
+### Calendar
+
+```bash
+garmin calendar [--year 2026] [--month 3]   # View a month
+garmin calendar --weeks 4                    # Next N weeks (spans months)
+garmin calendar delete <ID>                  # Remove a scheduled entry
 ```
 
 ### Gear
@@ -183,12 +194,6 @@ garmin gear link <UUID> <ACTIVITY_ID>  # Link gear to activity
 
 ```bash
 garmin records                         # PRs across all activities
-```
-
-### Calendar
-
-```bash
-garmin calendar [--year 2026] [--month 3]
 ```
 
 ### Devices
