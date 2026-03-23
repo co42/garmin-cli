@@ -151,7 +151,7 @@ fn print_steps(steps: &[serde_json::Value], indent: usize) {
                 other => other.to_string(),
             };
 
-            let mut line = format!("{pad}{kind_colored} — {end_str}");
+            let mut line = format!("{pad}{kind_colored} - {end_str}");
             if !target_str.is_empty() {
                 line.push_str(&format!(" @ {target_str}"));
             }
@@ -182,8 +182,8 @@ fn format_target(step: &serde_json::Value) -> String {
             }
         }
         "heart.rate.zone" => match (v1, v2) {
-            (Some(a), Some(b)) if a == b => format!("HR Z{}", a as u32),
-            (Some(a), Some(b)) => format!("HR Z{}-Z{}", a as u32, b as u32),
+            (Some(a), Some(b)) if a == b => format!("{} bpm", a as u32),
+            (Some(a), Some(b)) => format!("{}-{} bpm", a as u32, b as u32),
             _ => "HR target".into(),
         },
         "" => String::new(),
@@ -254,7 +254,10 @@ pub async fn delete(client: &GarminClient, output: &Output, id: u64) -> Result<(
 //   conditionTypeId: 1=lap.button, 2=time, 3=distance
 //   targetTypeId:   4=heart.rate.zone, 6=pace.zone
 //   Pace targets:   seconds per km (e.g. 265 = 4:25/km)
-//   HR targets:     zone numbers (1-5)
+//   HR targets:     BPM values (e.g. targetValueOne=120, targetValueTwo=150)
+//                   Zone numbers (1-5) do NOT work - the watch interprets them
+//                   as literal BPM. Always use actual BPM values.
+//                   Use `garmin training zones` to get your HR zone boundaries.
 
 /// Print a hardcoded workout template to stdout.
 pub fn template(output: &Output, kind: &str) {
@@ -351,8 +354,8 @@ pub fn template(output: &Output, kind: &str) {
                         "endCondition": { "conditionTypeId": 3, "conditionTypeKey": "distance" },
                         "endConditionValue": 8000,
                         "targetType": { "workoutTargetTypeId": 4, "workoutTargetTypeKey": "heart.rate.zone" },
-                        "targetValueOne": 1, "targetValueTwo": 2,
-                        "description": "Z1-Z2 Easy"
+                        "targetValueOne": 120, "targetValueTwo": 150,
+                        "description": "Z1-Z2 Easy - adjust BPM to your zones"
                     }
                 ]
             }]
@@ -377,8 +380,8 @@ pub fn template(output: &Output, kind: &str) {
                         "endCondition": { "conditionTypeId": 3, "conditionTypeKey": "distance" },
                         "endConditionValue": 16000,
                         "targetType": { "workoutTargetTypeId": 4, "workoutTargetTypeKey": "heart.rate.zone" },
-                        "targetValueOne": 2, "targetValueTwo": 2,
-                        "description": "Z2 Endurance"
+                        "targetValueOne": 130, "targetValueTwo": 150,
+                        "description": "Z2 Endurance - adjust BPM to your zones"
                     },
                     {
                         "type": "ExecutableStepDTO", "stepOrder": 3,

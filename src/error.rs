@@ -8,7 +8,7 @@ pub enum Error {
     #[error("Auth error: {0}")]
     Auth(String),
 
-    #[error("Not authenticated — run `garmin auth login`")]
+    #[error("Not authenticated - run `garmin auth login`")]
     NotAuthenticated,
 
     #[error("MFA required")]

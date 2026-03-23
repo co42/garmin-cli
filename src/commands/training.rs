@@ -190,7 +190,7 @@ impl HumanReadable for TrainingStatus {
                 .chronic_load
                 .map(|v| format!("{v:.0}"))
                 .unwrap_or_default();
-            println!("  ACWR:          {acwr:.1} ({status}) — acute: {acute} / chronic: {chronic}");
+            println!("  ACWR:          {acwr:.1} ({status}) - acute: {acute} / chronic: {chronic}");
         }
 
         // Load balance
@@ -270,7 +270,8 @@ pub async fn status(
 
 #[derive(Debug, Serialize)]
 pub struct TrainingReadiness {
-    pub date: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timestamp_local: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub score: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -308,19 +309,19 @@ pub struct TrainingReadiness {
     pub stress_feedback: Option<String>,
 }
 
-fn training_readiness_from(v: &serde_json::Value, date: &str) -> TrainingReadiness {
-    // Response is an array; take the first entry
-    let entry = if v.is_array() {
-        v.as_array()
-            .and_then(|a| a.first())
-            .cloned()
-            .unwrap_or(serde_json::Value::Null)
-    } else {
-        v.clone()
-    };
+/// Wraps a day's readiness into morning (wake-up) and post-activity scores.
+#[derive(Debug, Serialize)]
+pub struct DailyReadiness {
+    pub date: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub morning: Option<TrainingReadiness>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub post_activity: Option<TrainingReadiness>,
+}
 
+fn readiness_entry_from(entry: &serde_json::Value) -> TrainingReadiness {
     TrainingReadiness {
-        date: date.to_string(),
+        timestamp_local: entry["timestampLocal"].as_str().map(Into::into),
         score: entry["score"].as_i64(),
         level: entry["level"].as_str().map(Into::into),
         feedback: entry["feedbackShort"].as_str().map(Into::into),
@@ -343,35 +344,65 @@ fn training_readiness_from(v: &serde_json::Value, date: &str) -> TrainingReadine
     }
 }
 
-impl HumanReadable for TrainingReadiness {
-    fn print_human(&self) {
+fn daily_readiness_from(v: &serde_json::Value, date: &str) -> DailyReadiness {
+    let entries: Vec<&serde_json::Value> = match v.as_array() {
+        Some(arr) => arr.iter().collect(),
+        None if v.is_object() => vec![v],
+        _ => vec![],
+    };
+
+    let mut morning: Option<TrainingReadiness> = None;
+    let mut post_activity: Option<TrainingReadiness> = None;
+
+    for entry in &entries {
+        match entry["inputContext"].as_str() {
+            Some("AFTER_WAKEUP_RESET") => morning = Some(readiness_entry_from(entry)),
+            Some("AFTER_POST_EXERCISE_RESET") => post_activity = Some(readiness_entry_from(entry)),
+            _ => {} // ignore UPDATE_REALTIME_VARIABLES and other contexts
+        }
+    }
+
+    // Fallback: if no inputContext was found (old firmware), treat the entry with
+    // the earliest timestamp as morning.
+    if morning.is_none()
+        && post_activity.is_none()
+        && let Some(first) = entries.last()
+    {
+        // Fallback: no inputContext (old firmware) — treat earliest entry as morning
+        morning = Some(readiness_entry_from(first));
+    }
+
+    DailyReadiness {
+        date: date.to_string(),
+        morning,
+        post_activity,
+    }
+}
+
+impl TrainingReadiness {
+    fn print_section(&self, label: &str) {
         let score_str = self
             .score
             .map(|s| format!("{s}/100"))
             .unwrap_or_else(|| "?".into());
         let level = self.level.as_deref().unwrap_or("?");
-        println!(
-            "{}  Training Readiness: {} ({})",
-            self.date.bold(),
-            score_str.cyan(),
-            level
-        );
+        println!("  {:<15}{} ({})", label, score_str.cyan(), level);
 
         if let Some(ref fb) = self.feedback {
-            println!("  {fb}");
+            println!("  {:<15}{fb}", "");
         }
 
         let mut parts = Vec::new();
         if let Some(rt) = self.recovery_time_minutes {
             let h = rt / 60;
             let m = rt % 60;
-            parts.push(format!("Recovery time: {h}h{m:02}"));
+            parts.push(format!("Recovery: {h}h{m:02}"));
         }
         if let Some(hrv) = self.hrv_weekly_average {
-            parts.push(format!("HRV weekly: {hrv}ms"));
+            parts.push(format!("HRV 7d: {hrv}ms"));
         }
         if !parts.is_empty() {
-            println!("  {}", parts.join("  "));
+            println!("  {:<15}{}", "", parts.join("  "));
         }
 
         println!("  Factors:");
@@ -389,6 +420,36 @@ impl HumanReadable for TrainingReadiness {
         );
         print_factor("ACWR", self.acwr_score, self.acwr_feedback.as_deref());
         print_factor("Stress", self.stress_score, self.stress_feedback.as_deref());
+    }
+}
+
+impl HumanReadable for TrainingReadiness {
+    fn print_human(&self) {
+        // Standalone printing (not used directly, but required by trait)
+        self.print_section("Readiness");
+        println!();
+    }
+}
+
+impl HumanReadable for DailyReadiness {
+    fn print_human(&self) {
+        println!("{}", self.date.bold());
+
+        if let Some(ref m) = self.morning {
+            m.print_section("Morning");
+        }
+
+        if let Some(ref pa) = self.post_activity {
+            if self.morning.is_some() {
+                println!();
+            }
+            pa.print_section("Post-activity");
+        }
+
+        if self.morning.is_none() && self.post_activity.is_none() {
+            println!("  No readiness data");
+        }
+
         println!();
     }
 }
@@ -413,7 +474,7 @@ pub async fn readiness(
     if days == 1 {
         let path = format!("/metrics-service/metrics/trainingreadiness/{end_date}");
         let v: serde_json::Value = client.get_json(&path).await?;
-        let item = training_readiness_from(&v, &end_date);
+        let item = daily_readiness_from(&v, &end_date);
         output.print(&item);
     } else {
         let futs: Vec<_> = (0..days)
@@ -424,11 +485,11 @@ pub async fn readiness(
                 let path = format!("/metrics-service/metrics/trainingreadiness/{ds}");
                 async move {
                     let v: serde_json::Value = client.get_json(&path).await?;
-                    Ok(training_readiness_from(&v, &ds)) as Result<TrainingReadiness>
+                    Ok(daily_readiness_from(&v, &ds)) as Result<DailyReadiness>
                 }
             })
             .collect();
-        let items: Vec<TrainingReadiness> = futures::future::join_all(futs)
+        let items: Vec<DailyReadiness> = futures::future::join_all(futs)
             .await
             .into_iter()
             .collect::<Result<_>>()?;
@@ -940,5 +1001,75 @@ pub async fn lactate_threshold(client: &GarminClient, output: &Output) -> Result
         .await?;
     let item = lactate_threshold_from(&v);
     output.print(&item);
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Heart Rate Zones
+// ---------------------------------------------------------------------------
+// Garmin doesn't expose user HR zone boundaries directly. We fetch them from
+// the most recent running activity's hrTimeInZones data, which contains the
+// zoneLowBoundary for each zone as configured on the device.
+
+#[derive(Debug, Serialize)]
+pub struct HrZoneBoundary {
+    pub zone: i64,
+    pub min_bpm: i64,
+    pub max_bpm: i64,
+}
+
+impl HumanReadable for HrZoneBoundary {
+    fn print_human(&self) {
+        let range = if self.max_bpm >= 999 {
+            format!("{}+ bpm", self.min_bpm)
+        } else {
+            format!("{}-{} bpm", self.min_bpm, self.max_bpm)
+        };
+        println!("  Zone {}  {}", format!("{}", self.zone).cyan(), range,);
+    }
+}
+
+pub async fn zones(client: &GarminClient, output: &Output) -> Result<()> {
+    // Find the most recent running activity
+    let activities: serde_json::Value = client
+        .get_json("/activitylist-service/activities/search/activities?activityType=running&limit=1&start=0")
+        .await?;
+    let activity_id = activities
+        .as_array()
+        .and_then(|a| a.first())
+        .and_then(|a| a["activityId"].as_u64())
+        .ok_or_else(|| crate::error::Error::Api("No running activities found".into()))?;
+
+    // Get HR zones from that activity
+    let path = format!("/activity-service/activity/{activity_id}/hrTimeInZones");
+    let v: serde_json::Value = client.get_json(&path).await?;
+    let raw_zones: Vec<(i64, i64)> = v
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|z| {
+                    let zone = z["zoneNumber"].as_i64()?;
+                    let low = z["zoneLowBoundary"].as_i64()?;
+                    Some((zone, low))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    // Build boundaries: each zone's max is the next zone's min - 1
+    let mut boundaries: Vec<HrZoneBoundary> = Vec::new();
+    for (i, &(zone, min_bpm)) in raw_zones.iter().enumerate() {
+        let max_bpm = raw_zones
+            .get(i + 1)
+            .map(|&(_, next_min)| next_min - 1)
+            .unwrap_or(999);
+        boundaries.push(HrZoneBoundary {
+            zone,
+            min_bpm,
+            max_bpm,
+        });
+    }
+
+    output.print_list(&boundaries, "HR Zones");
     Ok(())
 }

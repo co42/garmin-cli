@@ -92,7 +92,7 @@ impl HumanReadable for SleepSummary {
             println!("  Stages:    {}", parts.join("  "));
         }
         if let (Some(start), Some(end)) = (&self.sleep_start, &self.sleep_end) {
-            println!("  Window:    {start} — {end}");
+            println!("  Window:    {start} - {end}");
         }
         if let Some(s) = self.sleep_need_seconds {
             println!("  Need:      {}", fmt_duration(s));
@@ -115,7 +115,7 @@ impl HumanReadable for SleepScore {
         let score_str = self
             .score
             .map(|s| s.to_string())
-            .unwrap_or_else(|| "—".into());
+            .unwrap_or_else(|| "-".into());
         println!("{}  Score: {}", self.date.bold(), score_str.cyan());
     }
 }

@@ -85,18 +85,20 @@ garmin training endurance-score [--date DATE] [--days N] [--from DATE --to DATE]
 garmin training hill-score [--date DATE] [--days N] [--from DATE --to DATE]
 garmin training fitness-age [--date DATE]
 garmin training lactate-threshold
+garmin training zones
 ```
 
 | Command | Key fields |
 |---|---|
 | `status` | training_status (PRODUCTIVE/DETRAINING/etc), vo2max, acute_load, chronic_load, acwr, load_balance |
-| `readiness` | score (0–100), factor breakdowns (sleep, recovery, training, HRV, stress, sleep_history) |
+| `readiness` | `{ date, morning, post_activity }` — each with score (0–100) + factor breakdowns. `morning` = wake-up score, `post_activity` = after exercise (absent on rest days) |
 | `scores` | VO2max daily history |
 | `race-predictions` | 5K/10K/half/marathon predicted times and paces |
 | `endurance-score` | score (0–10000), classification (Base→Elite) |
 | `hill-score` | overall, strength, endurance components |
 | `fitness-age` | fitness_age vs chronological_age, component breakdown |
 | `lactate-threshold` | heart_rate (bpm), pace (min/km), speed (m/s) |
+| `zones` | HR zone boundaries in BPM (zone, min_bpm, max_bpm) from latest running activity |
 
 ### Health
 
