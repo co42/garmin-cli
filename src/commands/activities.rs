@@ -489,7 +489,7 @@ impl HumanReadable for HrZone {
         let hr_label = self
             .min_hr
             .map(|h| format!("{h}+ bpm"))
-            .unwrap_or_else(|| "—".into());
+            .unwrap_or_else(|| "-".into());
         let time = self
             .seconds_in_zone
             .map(|s| {
@@ -497,7 +497,7 @@ impl HumanReadable for HrZone {
                 let sec = (s % 60.0).round() as u32;
                 format!("{m}:{sec:02}")
             })
-            .unwrap_or_else(|| "—".into());
+            .unwrap_or_else(|| "-".into());
         println!(
             "  Zone {}  {:>10}  {}",
             format!("{}", self.zone).cyan(),
@@ -594,7 +594,7 @@ impl HumanReadable for ActivitySplit {
         let dist = self
             .distance_meters
             .map(|d| format!("{:.0}m", d))
-            .unwrap_or_else(|| "—".into());
+            .unwrap_or_else(|| "-".into());
         let dur = self
             .duration_seconds
             .map(|s| {
@@ -602,12 +602,12 @@ impl HumanReadable for ActivitySplit {
                 let sec = (s % 60.0).round() as u32;
                 format!("{m}:{sec:02}")
             })
-            .unwrap_or_else(|| "—".into());
-        let pace = self.pace.as_deref().unwrap_or("—");
+            .unwrap_or_else(|| "-".into());
+        let pace = self.pace.as_deref().unwrap_or("-");
         let hr = self
             .avg_hr
             .map(|h| format!("{:.0} bpm", h))
-            .unwrap_or_else(|| "—".into());
+            .unwrap_or_else(|| "-".into());
         let elev = match (self.elevation_gain, self.elevation_loss) {
             (Some(g), Some(l)) => format!("+{:.0}/-{:.0}m", g, l),
             (Some(g), None) => format!("+{:.0}m", g),
@@ -819,7 +819,7 @@ pub async fn laps(client: &GarminClient, output: &Output, id: u64) -> Result<()>
     Ok(())
 }
 
-// ── Exercises (raw passthrough — too variable) ───────────────────────
+// ── Exercises (raw passthrough - too variable) ───────────────────────
 
 pub async fn exercises(client: &GarminClient, output: &Output, id: u64) -> Result<()> {
     let path = format!("/activity-service/activity/{id}/exerciseSets");

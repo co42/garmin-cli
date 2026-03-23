@@ -357,6 +357,8 @@ enum TrainingCommands {
     },
     /// Lactate threshold (speed and HR)
     LactateThreshold,
+    /// Heart rate zones (from most recent running activity)
+    Zones,
 }
 
 #[derive(Subcommand)]
@@ -815,6 +817,7 @@ async fn run(command: Commands, output: &Output) -> std::result::Result<(), Erro
                 TrainingCommands::LactateThreshold => {
                     commands::training::lactate_threshold(&client, output).await
                 }
+                TrainingCommands::Zones => commands::training::zones(&client, output).await,
             }
         }
 

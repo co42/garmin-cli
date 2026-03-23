@@ -190,7 +190,7 @@ impl HumanReadable for TrainingStatus {
                 .chronic_load
                 .map(|v| format!("{v:.0}"))
                 .unwrap_or_default();
-            println!("  ACWR:          {acwr:.1} ({status}) — acute: {acute} / chronic: {chronic}");
+            println!("  ACWR:          {acwr:.1} ({status}) - acute: {acute} / chronic: {chronic}");
         }
 
         // Load balance
@@ -1001,5 +1001,75 @@ pub async fn lactate_threshold(client: &GarminClient, output: &Output) -> Result
         .await?;
     let item = lactate_threshold_from(&v);
     output.print(&item);
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Heart Rate Zones
+// ---------------------------------------------------------------------------
+// Garmin doesn't expose user HR zone boundaries directly. We fetch them from
+// the most recent running activity's hrTimeInZones data, which contains the
+// zoneLowBoundary for each zone as configured on the device.
+
+#[derive(Debug, Serialize)]
+pub struct HrZoneBoundary {
+    pub zone: i64,
+    pub min_bpm: i64,
+    pub max_bpm: i64,
+}
+
+impl HumanReadable for HrZoneBoundary {
+    fn print_human(&self) {
+        let range = if self.max_bpm >= 999 {
+            format!("{}+ bpm", self.min_bpm)
+        } else {
+            format!("{}-{} bpm", self.min_bpm, self.max_bpm)
+        };
+        println!("  Zone {}  {}", format!("{}", self.zone).cyan(), range,);
+    }
+}
+
+pub async fn zones(client: &GarminClient, output: &Output) -> Result<()> {
+    // Find the most recent running activity
+    let activities: serde_json::Value = client
+        .get_json("/activitylist-service/activities/search/activities?activityType=running&limit=1&start=0")
+        .await?;
+    let activity_id = activities
+        .as_array()
+        .and_then(|a| a.first())
+        .and_then(|a| a["activityId"].as_u64())
+        .ok_or_else(|| crate::error::Error::Api("No running activities found".into()))?;
+
+    // Get HR zones from that activity
+    let path = format!("/activity-service/activity/{activity_id}/hrTimeInZones");
+    let v: serde_json::Value = client.get_json(&path).await?;
+    let raw_zones: Vec<(i64, i64)> = v
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|z| {
+                    let zone = z["zoneNumber"].as_i64()?;
+                    let low = z["zoneLowBoundary"].as_i64()?;
+                    Some((zone, low))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    // Build boundaries: each zone's max is the next zone's min - 1
+    let mut boundaries: Vec<HrZoneBoundary> = Vec::new();
+    for (i, &(zone, min_bpm)) in raw_zones.iter().enumerate() {
+        let max_bpm = raw_zones
+            .get(i + 1)
+            .map(|&(_, next_min)| next_min - 1)
+            .unwrap_or(999);
+        boundaries.push(HrZoneBoundary {
+            zone,
+            min_bpm,
+            max_bpm,
+        });
+    }
+
+    output.print_list(&boundaries, "HR Zones");
     Ok(())
 }

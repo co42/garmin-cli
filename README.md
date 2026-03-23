@@ -85,6 +85,7 @@ garmin training endurance-score [--date DATE] [--days N] [--from DATE --to DATE]
 garmin training hill-score [--date DATE] [--days N] [--from DATE --to DATE]
 garmin training fitness-age [--date DATE]
 garmin training lactate-threshold
+garmin training zones
 ```
 
 | Command | Key fields |
@@ -97,6 +98,7 @@ garmin training lactate-threshold
 | `hill-score` | overall, strength, endurance components |
 | `fitness-age` | fitness_age vs chronological_age, component breakdown |
 | `lactate-threshold` | heart_rate (bpm), pace (min/km), speed (m/s) |
+| `zones` | HR zone boundaries in BPM (zone, min_bpm, max_bpm) from latest running activity |
 
 ### Health
 
