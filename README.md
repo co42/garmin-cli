@@ -90,7 +90,7 @@ garmin training lactate-threshold
 | Command | Key fields |
 |---|---|
 | `status` | training_status (PRODUCTIVE/DETRAINING/etc), vo2max, acute_load, chronic_load, acwr, load_balance |
-| `readiness` | score (0–100), factor breakdowns (sleep, recovery, training, HRV, stress, sleep_history) |
+| `readiness` | `{ date, morning, post_activity }` — each with score (0–100) + factor breakdowns. `morning` = wake-up score, `post_activity` = after exercise (absent on rest days) |
 | `scores` | VO2max daily history |
 | `race-predictions` | 5K/10K/half/marathon predicted times and paces |
 | `endurance-score` | score (0–10000), classification (Base→Elite) |
