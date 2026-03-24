@@ -25,7 +25,7 @@ dirs = "6"
 hmac = "0.12"
 percent-encoding = "2"
 rand = "0.9"
-regex = "1"
+rpassword = "7"
 reqwest = { version = "0.13", features = ["cookies", "form", "json", "multipart", "query"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

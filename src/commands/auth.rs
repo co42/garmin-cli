@@ -9,6 +9,10 @@ fn prompt(label: &str) -> std::io::Result<String> {
     Ok(buf.trim().to_string())
 }
 
+fn prompt_password() -> std::io::Result<String> {
+    rpassword::prompt_password("Password: ")
+}
+
 pub async fn login(output: &Output) -> Result<()> {
     let email = std::env::var("GARMIN_EMAIL")
         .ok()
@@ -17,7 +21,7 @@ pub async fn login(output: &Output) -> Result<()> {
     let pass = std::env::var("GARMIN_PASSWORD")
         .ok()
         .filter(|s| !s.is_empty())
-        .map_or_else(|| prompt("Password"), Ok)?;
+        .map_or_else(prompt_password, Ok)?;
 
     output.status("Logging in to Garmin Connect...");
     let tokens = auth::login(&email, &pass).await?;

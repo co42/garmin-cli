@@ -10,9 +10,39 @@ use std::time::{SystemTime, UNIX_EPOCH};
 const SSO_BASE: &str = "https://sso.garmin.com";
 const CONNECT_API: &str = "https://connectapi.garmin.com";
 const OAUTH_CONSUMER_URL: &str = "https://thegarth.s3.amazonaws.com/oauth_consumer.json";
+const SERVICE_URL: &str = "https://mobile.integration.garmin.com/gcm/android";
+const CLIENT_ID: &str = "GCM_ANDROID_DARK";
 
-const SSO_USER_AGENT: &str = "GCM-iOS-5.19.1.2";
 const CONNECT_USER_AGENT: &str = "com.garmin.android.apps.connectmobile";
+
+/// Browser-like headers for SSO — Cloudflare blocks mismatched UAs.
+fn sso_headers() -> reqwest::header::HeaderMap {
+    use reqwest::header::{
+        ACCEPT, ACCEPT_LANGUAGE, HeaderMap, HeaderName, HeaderValue, USER_AGENT,
+    };
+    let mut h = HeaderMap::new();
+    h.insert(
+        USER_AGENT,
+        HeaderValue::from_static(
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) \
+             AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
+        ),
+    );
+    h.insert(
+        ACCEPT,
+        HeaderValue::from_static("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"),
+    );
+    h.insert(ACCEPT_LANGUAGE, HeaderValue::from_static("en-US,en;q=0.9"));
+    h.insert(
+        HeaderName::from_static("sec-fetch-mode"),
+        HeaderValue::from_static("navigate"),
+    );
+    h.insert(
+        HeaderName::from_static("sec-fetch-dest"),
+        HeaderValue::from_static("document"),
+    );
+    h
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Tokens {
@@ -89,7 +119,7 @@ pub async fn login(email: &str, password: &str) -> Result<Tokens> {
     let ticket = sso_login(email, password).await?;
     let consumer = fetch_consumer_credentials().await?;
     let oauth1 = exchange_ticket_for_oauth1(&ticket, &consumer).await?;
-    let oauth2 = exchange_oauth1_for_oauth2(&oauth1, &consumer).await?;
+    let oauth2 = exchange_oauth1_for_oauth2(&oauth1, &consumer, true).await?;
 
     let tokens = Tokens {
         consumer,
@@ -102,133 +132,149 @@ pub async fn login(email: &str, password: &str) -> Result<Tokens> {
 
 /// Refresh OAuth2 token using stored OAuth1 credentials
 pub async fn refresh(tokens: &mut Tokens) -> Result<()> {
-    tokens.oauth2 = exchange_oauth1_for_oauth2(&tokens.oauth1, &tokens.consumer).await?;
+    tokens.oauth2 = exchange_oauth1_for_oauth2(&tokens.oauth1, &tokens.consumer, false).await?;
     tokens.save()?;
     Ok(())
 }
 
-// --- SSO flow ---
+// --- SSO flow (mobile API, March 2026) ---
 
 async fn sso_login(email: &str, password: &str) -> Result<String> {
     let jar = std::sync::Arc::new(reqwest::cookie::Jar::default());
     let client = reqwest::Client::builder()
         .cookie_provider(jar)
-        .user_agent(SSO_USER_AGENT)
+        .default_headers(sso_headers())
         .build()?;
 
-    let sso = format!("{SSO_BASE}/sso");
-    let sso_embed = format!("{sso}/embed");
-
-    // Step 1: GET /sso/embed - sets cookies
-    let embed_params: &[(&str, &str)] = &[
-        ("id", "gauth-widget"),
-        ("embedWidget", "true"),
-        ("gauthHost", &sso),
+    let login_params = [
+        ("clientId", CLIENT_ID),
+        ("locale", "en-US"),
+        ("service", SERVICE_URL),
     ];
-    client.get(&sso_embed).query(embed_params).send().await?;
 
-    // Step 2: GET /sso/signin - get CSRF token
-    // signin uses richer params than embed
-    let signin_params: &[(&str, &str)] = &[
-        ("id", "gauth-widget"),
-        ("embedWidget", "true"),
-        ("gauthHost", &sso_embed),
-        ("service", &sso_embed),
-        ("source", &sso_embed),
-        ("redirectAfterAccountLoginUrl", &sso_embed),
-        ("redirectAfterAccountCreationUrl", &sso_embed),
-    ];
-    let signin_url = format!("{SSO_BASE}/sso/signin");
-    let signin_resp = client
-        .get(&signin_url)
-        .query(signin_params)
-        .header("referer", &sso_embed)
+    // Step 1: GET /mobile/sso/en/sign-in — sets cookies
+    client
+        .get(format!("{SSO_BASE}/mobile/sso/en/sign-in"))
+        .query(&[("clientId", CLIENT_ID)])
+        .header("Sec-Fetch-Site", "none")
         .send()
         .await?;
-    let signin_resp_url = signin_resp.url().to_string();
-    let signin_page = signin_resp.text().await?;
 
-    let csrf = extract_csrf(&signin_page)?;
+    // Step 2: POST /mobile/api/login — submit credentials as JSON
+    let resp = client
+        .post(format!("{SSO_BASE}/mobile/api/login"))
+        .query(&login_params)
+        .json(&serde_json::json!({
+            "username": email,
+            "password": password,
+            "rememberMe": false,
+            "captchaToken": "",
+        }))
+        .send()
+        .await?;
 
-    // Step 3: POST /sso/signin - submit credentials
-    let form: &[(&str, &str)] = &[
-        ("username", email),
-        ("password", password),
-        ("_csrf", &csrf),
-        ("embed", "true"),
-    ];
+    let status = resp.status();
+    let body: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|_| Error::Auth(format!("SSO returned non-JSON response (HTTP {status})")))?;
+
+    let resp_type = body
+        .pointer("/responseStatus/type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    match resp_type {
+        "SUCCESSFUL" => {
+            let ticket = body["serviceTicketId"]
+                .as_str()
+                .ok_or_else(|| Error::Auth("No ticket in SSO response".into()))?
+                .to_string();
+            complete_sso(&client).await;
+            Ok(ticket)
+        }
+        "MFA_REQUIRED" => {
+            let mfa_method = body
+                .pointer("/customerMfaInfo/mfaLastMethodUsed")
+                .and_then(|v| v.as_str())
+                .unwrap_or("email")
+                .to_string();
+            let ticket = handle_mfa(&client, &login_params, &mfa_method).await?;
+            complete_sso(&client).await;
+            Ok(ticket)
+        }
+        _ => {
+            let message = body
+                .pointer("/responseStatus/message")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let detail = if message.is_empty() {
+                format!("HTTP {status}, type={resp_type}")
+            } else {
+                format!("{resp_type}: {message}")
+            };
+            Err(Error::Auth(format!("SSO login failed ({detail})")))
+        }
+    }
+}
+
+/// Best-effort GET to set Cloudflare LB cookie for backend pinning.
+async fn complete_sso(client: &reqwest::Client) {
+    let _ = client
+        .get(format!("{SSO_BASE}/portal/sso/embed"))
+        .header("Sec-Fetch-Site", "same-origin")
+        .send()
+        .await;
+}
+
+async fn handle_mfa(
+    client: &reqwest::Client,
+    login_params: &[(&str, &str)],
+    mfa_method: &str,
+) -> Result<String> {
+    eprint!("MFA code: ");
+    let mut mfa_code = String::new();
+    std::io::stdin().read_line(&mut mfa_code)?;
+    let mfa_code = mfa_code.trim();
 
     let resp = client
-        .post(&signin_url)
-        .query(signin_params)
-        .header("referer", &signin_resp_url)
-        .form(form)
+        .post(format!("{SSO_BASE}/mobile/api/mfa/verifyCode"))
+        .query(login_params)
+        .json(&serde_json::json!({
+            "mfaMethod": mfa_method,
+            "mfaVerificationCode": mfa_code,
+            "rememberMyBrowser": false,
+            "reconsentList": [],
+            "mfaSetup": false,
+        }))
         .send()
         .await?;
-    let post_url = resp.url().to_string();
-    let body = resp.text().await?;
 
-    let title = extract_title(&body).unwrap_or_default();
+    let status = resp.status();
+    let body: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|_| Error::Auth(format!("MFA returned non-JSON response (HTTP {status})")))?;
 
-    // Handle MFA
-    if title.contains("MFA") {
-        let csrf = extract_csrf(&body)?;
-        eprint!("MFA code: ");
-        let mut mfa_code = String::new();
-        std::io::stdin().read_line(&mut mfa_code)?;
-        let mfa_code = mfa_code.trim();
+    let resp_type = body
+        .pointer("/responseStatus/type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
 
-        let mfa_form: &[(&str, &str)] = &[
-            ("mfa-code", mfa_code),
-            ("embed", "true"),
-            ("_csrf", &csrf),
-            ("fromPage", "setupEnterMfaCode"),
-        ];
-
-        let mfa_url = format!("{SSO_BASE}/sso/verifyMFA/loginEnterMfaCode");
-        let resp = client
-            .post(&mfa_url)
-            .query(signin_params)
-            .header("referer", &post_url)
-            .form(mfa_form)
-            .send()
-            .await?;
-        let body = resp.text().await?;
-        let title = extract_title(&body).unwrap_or_default();
-        if title != "Success" {
-            return Err(Error::Auth(format!("MFA verification failed: {title}")));
-        }
-        return extract_ticket(&body);
+    if resp_type != "SUCCESSFUL" {
+        let message = body
+            .pointer("/responseStatus/message")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        return Err(Error::Auth(format!(
+            "MFA verification failed: {resp_type} {message}"
+        )));
     }
 
-    if title != "Success" {
-        return Err(Error::Auth(format!("SSO login failed: {title}")));
-    }
-
-    extract_ticket(&body)
-}
-
-fn extract_csrf(html: &str) -> Result<String> {
-    let re = regex::Regex::new(r#"name="_csrf"\s+value="([^"]+)""#).unwrap();
-    re.captures(html)
-        .and_then(|c| c.get(1))
-        .map(|m| m.as_str().to_string())
-        .ok_or_else(|| Error::Auth("CSRF token not found in SSO page".into()))
-}
-
-fn extract_title(html: &str) -> Option<String> {
-    let re = regex::Regex::new(r"<title>(.+?)</title>").unwrap();
-    re.captures(html)
-        .and_then(|c| c.get(1))
-        .map(|m| m.as_str().to_string())
-}
-
-fn extract_ticket(html: &str) -> Result<String> {
-    let re = regex::Regex::new(r#"embed\?ticket=([^"]+)"#).unwrap();
-    re.captures(html)
-        .and_then(|c| c.get(1))
-        .map(|m| m.as_str().to_string())
-        .ok_or_else(|| Error::Auth("SSO ticket not found - check credentials".into()))
+    body["serviceTicketId"]
+        .as_str()
+        .map(String::from)
+        .ok_or_else(|| Error::Auth("No ticket in MFA response".into()))
 }
 
 // --- OAuth flow ---
@@ -287,10 +333,9 @@ async fn exchange_ticket_for_oauth1(
         .build()?;
 
     let base_path = format!("{CONNECT_API}/oauth-service/oauth/preauthorized");
-    let login_url = format!("{SSO_BASE}/sso/embed");
     let encoded_ticket = urlencoding::encode(ticket);
     let url = format!(
-        "{base_path}?ticket={encoded_ticket}&login-url={login_url}&accepts-mfa-tokens=true"
+        "{base_path}?ticket={encoded_ticket}&login-url={SERVICE_URL}&accepts-mfa-tokens=true"
     );
 
     let auth_header = oauth1_header(
@@ -298,7 +343,7 @@ async fn exchange_ticket_for_oauth1(
         &base_path,
         &[
             ("ticket", ticket),
-            ("login-url", &login_url),
+            ("login-url", SERVICE_URL),
             ("accepts-mfa-tokens", "true"),
         ],
         &consumer.consumer_key,
@@ -347,6 +392,7 @@ async fn exchange_ticket_for_oauth1(
 async fn exchange_oauth1_for_oauth2(
     oauth1: &OAuth1Token,
     consumer: &ConsumerCredentials,
+    is_login: bool,
 ) -> Result<OAuth2Token> {
     let client = reqwest::Client::builder()
         .user_agent(CONNECT_USER_AGENT)
@@ -354,10 +400,16 @@ async fn exchange_oauth1_for_oauth2(
 
     let url = format!("{CONNECT_API}/oauth-service/oauth/exchange/user/2.0");
 
+    let body_params: Vec<(&str, &str)> = if is_login {
+        vec![("audience", "GARMIN_CONNECT_MOBILE_ANDROID_DI")]
+    } else {
+        vec![]
+    };
+
     let auth_header = oauth1_header(
         "POST",
         &url,
-        &[],
+        &body_params,
         &consumer.consumer_key,
         &consumer.consumer_secret,
         Some(&oauth1.token),
@@ -365,12 +417,16 @@ async fn exchange_oauth1_for_oauth2(
     );
 
     let content_type = "application/x-www-form-urlencoded";
-    let resp = client
+    let mut req = client
         .post(&url)
         .header("Authorization", auth_header)
-        .header("Content-Type", content_type)
-        .send()
-        .await?;
+        .header("Content-Type", content_type);
+
+    if is_login {
+        req = req.form(&[("audience", "GARMIN_CONNECT_MOBILE_ANDROID_DI")]);
+    }
+
+    let resp = req.send().await?;
 
     let status = resp.status();
     let body = resp.text().await?;
