@@ -114,12 +114,21 @@ impl Tokens {
     }
 }
 
-/// Full SSO login flow: username/password -> SSO ticket -> OAuth1 -> OAuth2
+/// Full SSO login flow: username/password -> SSO ticket -> OAuth1 -> OAuth2.
+/// Uses a single session (cookie jar) throughout, matching garth's behavior.
 pub async fn login(email: &str, password: &str) -> Result<Tokens> {
-    let ticket = sso_login(email, password).await?;
-    let consumer = fetch_consumer_credentials().await?;
-    let oauth1 = exchange_ticket_for_oauth1(&ticket, &consumer).await?;
-    let oauth2 = exchange_oauth1_for_oauth2(&oauth1, &consumer, true).await?;
+    let jar = std::sync::Arc::new(reqwest::cookie::Jar::default());
+    let client = reqwest::Client::builder()
+        .cookie_provider(jar)
+        .default_headers(sso_headers())
+        .build()?;
+
+    let ticket = sso_login(&client, email, password).await?;
+    complete_sso(&client).await;
+
+    let consumer = fetch_consumer_credentials(&client).await?;
+    let oauth1 = exchange_ticket_for_oauth1(&client, &ticket, &consumer).await?;
+    let oauth2 = exchange_oauth1_for_oauth2(&client, &oauth1, &consumer, true).await?;
 
     let tokens = Tokens {
         consumer,
@@ -132,20 +141,18 @@ pub async fn login(email: &str, password: &str) -> Result<Tokens> {
 
 /// Refresh OAuth2 token using stored OAuth1 credentials
 pub async fn refresh(tokens: &mut Tokens) -> Result<()> {
-    tokens.oauth2 = exchange_oauth1_for_oauth2(&tokens.oauth1, &tokens.consumer, false).await?;
+    let client = reqwest::Client::builder()
+        .user_agent(CONNECT_USER_AGENT)
+        .build()?;
+    tokens.oauth2 =
+        exchange_oauth1_for_oauth2(&client, &tokens.oauth1, &tokens.consumer, false).await?;
     tokens.save()?;
     Ok(())
 }
 
 // --- SSO flow (mobile API, March 2026) ---
 
-async fn sso_login(email: &str, password: &str) -> Result<String> {
-    let jar = std::sync::Arc::new(reqwest::cookie::Jar::default());
-    let client = reqwest::Client::builder()
-        .cookie_provider(jar)
-        .default_headers(sso_headers())
-        .build()?;
-
+async fn sso_login(client: &reqwest::Client, email: &str, password: &str) -> Result<String> {
     let login_params = [
         ("clientId", CLIENT_ID),
         ("locale", "en-US"),
@@ -188,10 +195,8 @@ async fn sso_login(email: &str, password: &str) -> Result<String> {
         "SUCCESSFUL" => {
             let ticket = body["serviceTicketId"]
                 .as_str()
-                .ok_or_else(|| Error::Auth("No ticket in SSO response".into()))?
-                .to_string();
-            complete_sso(&client).await;
-            Ok(ticket)
+                .ok_or_else(|| Error::Auth("No ticket in SSO response".into()))?;
+            Ok(ticket.to_string())
         }
         "MFA_REQUIRED" => {
             let mfa_method = body
@@ -199,9 +204,7 @@ async fn sso_login(email: &str, password: &str) -> Result<String> {
                 .and_then(|v| v.as_str())
                 .unwrap_or("email")
                 .to_string();
-            let ticket = handle_mfa(&client, &login_params, &mfa_method).await?;
-            complete_sso(&client).await;
-            Ok(ticket)
+            handle_mfa(client, &login_params, &mfa_method).await
         }
         _ => {
             let message = body
@@ -279,7 +282,7 @@ async fn handle_mfa(
 
 // --- OAuth flow ---
 
-async fn fetch_consumer_credentials() -> Result<ConsumerCredentials> {
+async fn fetch_consumer_credentials(client: &reqwest::Client) -> Result<ConsumerCredentials> {
     // 1. Env var override
     if let (Ok(key), Ok(secret)) = (
         std::env::var("GARMIN_CONSUMER_KEY"),
@@ -301,7 +304,13 @@ async fn fetch_consumer_credentials() -> Result<ConsumerCredentials> {
     }
 
     // 3. Fetch from S3 and cache
-    let resp: serde_json::Value = reqwest::get(OAUTH_CONSUMER_URL).await?.json().await?;
+    let resp: serde_json::Value = client
+        .get(OAUTH_CONSUMER_URL)
+        .header("User-Agent", CONNECT_USER_AGENT)
+        .send()
+        .await?
+        .json()
+        .await?;
     let key = resp["consumer_key"]
         .as_str()
         .ok_or_else(|| Error::Auth("Missing consumer key".into()))?
@@ -325,13 +334,10 @@ async fn fetch_consumer_credentials() -> Result<ConsumerCredentials> {
 }
 
 async fn exchange_ticket_for_oauth1(
+    client: &reqwest::Client,
     ticket: &str,
     consumer: &ConsumerCredentials,
 ) -> Result<OAuth1Token> {
-    let client = reqwest::Client::builder()
-        .user_agent(CONNECT_USER_AGENT)
-        .build()?;
-
     let base_path = format!("{CONNECT_API}/oauth-service/oauth/preauthorized");
     let encoded_ticket = urlencoding::encode(ticket);
     let url = format!(
@@ -355,6 +361,7 @@ async fn exchange_ticket_for_oauth1(
     let resp = client
         .get(&url)
         .header("Authorization", auth_header)
+        .header("User-Agent", CONNECT_USER_AGENT)
         .send()
         .await?;
 
@@ -390,14 +397,11 @@ async fn exchange_ticket_for_oauth1(
 }
 
 async fn exchange_oauth1_for_oauth2(
+    client: &reqwest::Client,
     oauth1: &OAuth1Token,
     consumer: &ConsumerCredentials,
     is_login: bool,
 ) -> Result<OAuth2Token> {
-    let client = reqwest::Client::builder()
-        .user_agent(CONNECT_USER_AGENT)
-        .build()?;
-
     let url = format!("{CONNECT_API}/oauth-service/oauth/exchange/user/2.0");
 
     let body_params: Vec<(&str, &str)> = if is_login {
@@ -420,6 +424,7 @@ async fn exchange_oauth1_for_oauth2(
     let mut req = client
         .post(&url)
         .header("Authorization", auth_header)
+        .header("User-Agent", CONNECT_USER_AGENT)
         .header("Content-Type", content_type);
 
     if is_login {
