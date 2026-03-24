@@ -14,6 +14,7 @@ const SERVICE_URL: &str = "https://mobile.integration.garmin.com/gcm/android";
 const CLIENT_ID: &str = "GCM_ANDROID_DARK";
 
 const CONNECT_USER_AGENT: &str = "com.garmin.android.apps.connectmobile";
+const SSO_MOBILE_USER_AGENT: &str = "GCM-iOS-5.22.1.4";
 
 /// Browser-like headers for SSO — Cloudflare blocks mismatched UAs.
 fn sso_headers() -> reqwest::header::HeaderMap {
@@ -168,8 +169,10 @@ async fn sso_login(client: &reqwest::Client, email: &str, password: &str) -> Res
         .await?;
 
     // Step 2: POST /mobile/api/login — submit credentials as JSON
+    // Mobile API endpoints expect the GCM-iOS UA, not browser headers
     let resp = client
         .post(format!("{SSO_BASE}/mobile/api/login"))
+        .header("User-Agent", SSO_MOBILE_USER_AGENT)
         .query(&login_params)
         .json(&serde_json::json!({
             "username": email,
@@ -242,6 +245,7 @@ async fn handle_mfa(
 
     let resp = client
         .post(format!("{SSO_BASE}/mobile/api/mfa/verifyCode"))
+        .header("User-Agent", SSO_MOBILE_USER_AGENT)
         .query(login_params)
         .json(&serde_json::json!({
             "mfaMethod": mfa_method,
