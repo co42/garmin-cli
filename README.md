@@ -91,7 +91,7 @@ garmin training zones
 | Command | Key fields |
 |---|---|
 | `status` | training_status (PRODUCTIVE/DETRAINING/etc), vo2max, acute_load, chronic_load, acwr, load_balance |
-| `readiness` | `{ date, morning, post_activity }` — each with score (0–100) + factor breakdowns. `morning` = wake-up score, `post_activity` = after exercise (absent on rest days) |
+| `readiness` | `{ date, morning, post_activity, latest }` — each with score (0–100) + factor breakdowns. `morning` = wake-up score, `post_activity` = after exercise (absent on rest days), `latest` = real-time score (matches watch display, absent if no update since morning/post-activity) |
 | `scores` | VO2max daily history |
 | `race-predictions` | 5K/10K/half/marathon predicted times and paces |
 | `endurance-score` | score (0–10000), classification (Base→Elite) |

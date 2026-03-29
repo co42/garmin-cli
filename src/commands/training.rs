@@ -309,7 +309,8 @@ pub struct TrainingReadiness {
     pub stress_feedback: Option<String>,
 }
 
-/// Wraps a day's readiness into morning (wake-up) and post-activity scores.
+/// Wraps a day's readiness into morning (wake-up), post-activity, and latest
+/// (real-time) scores.
 #[derive(Debug, Serialize)]
 pub struct DailyReadiness {
     pub date: String,
@@ -317,6 +318,8 @@ pub struct DailyReadiness {
     pub morning: Option<TrainingReadiness>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub post_activity: Option<TrainingReadiness>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub latest: Option<TrainingReadiness>,
 }
 
 fn readiness_entry_from(entry: &serde_json::Value) -> TrainingReadiness {
@@ -353,12 +356,30 @@ fn daily_readiness_from(v: &serde_json::Value, date: &str) -> DailyReadiness {
 
     let mut morning: Option<TrainingReadiness> = None;
     let mut post_activity: Option<TrainingReadiness> = None;
+    let mut latest: Option<TrainingReadiness> = None;
 
     for entry in &entries {
         match entry["inputContext"].as_str() {
             Some("AFTER_WAKEUP_RESET") => morning = Some(readiness_entry_from(entry)),
             Some("AFTER_POST_EXERCISE_RESET") => post_activity = Some(readiness_entry_from(entry)),
-            _ => {} // ignore UPDATE_REALTIME_VARIABLES and other contexts
+            Some("UPDATE_REALTIME_VARIABLES") => latest = Some(readiness_entry_from(entry)),
+            _ => {}
+        }
+    }
+
+    // Drop latest if its timestamp is not after the morning/post-activity snapshot
+    // (stale realtime entry carried over from the previous day).
+    if let Some(ref l) = latest {
+        let ref_ts = post_activity
+            .as_ref()
+            .or(morning.as_ref())
+            .and_then(|r| r.timestamp_local.as_deref());
+        let keep = match (l.timestamp_local.as_deref(), ref_ts) {
+            (Some(lt), Some(rt)) => lt > rt,
+            _ => true,
+        };
+        if !keep {
+            latest = None;
         }
     }
 
@@ -366,9 +387,9 @@ fn daily_readiness_from(v: &serde_json::Value, date: &str) -> DailyReadiness {
     // the earliest timestamp as morning.
     if morning.is_none()
         && post_activity.is_none()
+        && latest.is_none()
         && let Some(first) = entries.last()
     {
-        // Fallback: no inputContext (old firmware) — treat earliest entry as morning
         morning = Some(readiness_entry_from(first));
     }
 
@@ -376,6 +397,7 @@ fn daily_readiness_from(v: &serde_json::Value, date: &str) -> DailyReadiness {
         date: date.to_string(),
         morning,
         post_activity,
+        latest,
     }
 }
 
@@ -446,7 +468,14 @@ impl HumanReadable for DailyReadiness {
             pa.print_section("Post-activity");
         }
 
-        if self.morning.is_none() && self.post_activity.is_none() {
+        if let Some(ref l) = self.latest {
+            if self.morning.is_some() || self.post_activity.is_some() {
+                println!();
+            }
+            l.print_section("Latest");
+        }
+
+        if self.morning.is_none() && self.post_activity.is_none() && self.latest.is_none() {
             println!("  No readiness data");
         }
 
