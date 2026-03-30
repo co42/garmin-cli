@@ -85,10 +85,15 @@ impl HumanReadable for SleepSummary {
                 .as_deref()
                 .map(|q| format!(" ({q})"))
                 .unwrap_or_default();
-            println!("  Score:     {}{}", score.to_string().cyan(), qualifier);
+            println!(
+                "  {:<14}{}{}",
+                "Score:",
+                score.to_string().cyan(),
+                qualifier
+            );
         }
         if let Some(s) = self.sleep_seconds {
-            println!("  Duration:  {}", fmt_duration(s).cyan());
+            println!("  {:<14}{}", "Duration:", fmt_duration(s).cyan());
         }
         // Deep / Light / REM / Awake on one line
         let parts: Vec<String> = [
@@ -105,13 +110,13 @@ impl HumanReadable for SleepSummary {
         .flatten()
         .collect();
         if !parts.is_empty() {
-            println!("  Stages:    {}", parts.join("  "));
+            println!("  {:<14}{}", "Stages:", parts.join("  "));
         }
         if let (Some(start), Some(end)) = (&self.sleep_start, &self.sleep_end) {
-            println!("  Window:    {start} - {end}");
+            println!("  {:<14}{start} \u{2013} {end}", "Window:");
         }
         if let Some(s) = self.sleep_need_seconds {
-            println!("  Need:      {}", fmt_duration(s));
+            println!("  {:<14}{}", "Need:", fmt_duration(s));
         }
         println!();
     }
@@ -183,11 +188,10 @@ impl HumanReadable for StressSummary {
     fn print_human(&self) {
         println!("{}  {}", self.date.bold(), "Stress".dimmed());
         if let Some(avg) = self.avg_stress {
-            let max_str = self
-                .max_stress
-                .map(|m| format!("  Max: {m}"))
-                .unwrap_or_default();
-            println!("  Avg:       {}{}", avg.to_string().cyan(), max_str);
+            println!("  {:<14}{}", "Average:", avg.to_string().cyan());
+        }
+        if let Some(max) = self.max_stress {
+            println!("  {:<14}{max}", "Max:");
         }
         println!();
     }
@@ -222,13 +226,13 @@ impl HumanReadable for HeartRateDay {
     fn print_human(&self) {
         println!("{}  {}", self.date.bold(), "Heart Rate".dimmed());
         if let Some(v) = self.resting_hr {
-            println!("  Resting:   {} bpm", v.to_string().red());
+            println!("  {:<14}{} bpm", "Resting:", v.to_string().cyan());
         }
         if let (Some(lo), Some(hi)) = (self.min_hr, self.max_hr) {
-            println!("  Range:     {lo}–{hi} bpm");
+            println!("  {:<14}{lo}\u{2013}{hi} bpm", "Range:");
         }
         if let Some(v) = self.avg_7day_resting {
-            println!("  7-day avg: {v} bpm");
+            println!("  {:<14}{v} bpm", "7-day avg:");
         }
         println!();
     }
@@ -261,10 +265,10 @@ impl HumanReadable for BodyBattery {
     fn print_human(&self) {
         println!("{}  {}", self.date.bold(), "Body Battery".dimmed());
         if let (Some(lo), Some(hi)) = (self.body_battery_low, self.body_battery_high) {
-            println!("  Range:     {lo}–{hi}");
+            println!("  {:<14}{lo}\u{2013}{hi}", "Range:");
         }
         if let Some(v) = self.body_battery_latest {
-            println!("  Latest:    {}", v.to_string().cyan());
+            println!("  {:<14}{}", "Latest:", v.to_string().cyan());
         }
         println!();
     }
@@ -320,19 +324,19 @@ impl HumanReadable for HrvSummary {
     fn print_human(&self) {
         println!("{}  {}", self.date.bold(), "HRV".dimmed());
         if let Some(v) = self.last_night_avg {
-            println!("  Last night:  {} ms", v.to_string().cyan());
+            println!("  {:<14}{} ms", "Last night:", v.to_string().cyan());
         }
         if let Some(v) = self.last_night_5min_high {
-            println!("  5-min high:  {v} ms");
+            println!("  {:<14}{v} ms", "5-min high:");
         }
         if let Some(v) = self.weekly_average {
-            println!("  Weekly avg:  {v} ms");
+            println!("  {:<14}{v} ms", "Weekly avg:");
         }
         if let Some(ref s) = self.status {
-            println!("  Status:      {s}");
+            println!("  {:<14}{s}", "Status:");
         }
         if let (Some(lo), Some(hi)) = (self.baseline_balanced_low, self.baseline_balanced_upper) {
-            println!("  Baseline:    {lo}–{hi} ms");
+            println!("  {:<14}{lo}\u{2013}{hi} ms", "Baseline:");
         }
         println!();
     }
@@ -370,10 +374,10 @@ impl HumanReadable for Steps {
                 .step_goal
                 .map(|g| format!(" / {g}"))
                 .unwrap_or_default();
-            println!("  Steps:     {}{}", s.to_string().cyan(), goal_str);
+            println!("  {:<14}{}{}", "Steps:", s.to_string().cyan(), goal_str);
         }
         if let Some(d) = self.total_distance_meters {
-            println!("  Distance:  {:.2} km", d / 1000.0);
+            println!("  {:<14}{:.2} km", "Distance:", d / 1000.0);
         }
         println!();
     }
@@ -427,22 +431,26 @@ impl HumanReadable for Weight {
     fn print_human(&self) {
         println!("{}  {}", self.date.bold(), "Weight".dimmed());
         if let Some(w) = self.weight_kg {
-            println!("  Weight:    {} kg", format!("{w:.1}").cyan());
+            println!("  {:<14}{} kg", "Weight:", format!("{w:.1}").cyan());
+        } else {
+            println!("  No data");
+            println!();
+            return;
         }
         if let Some(b) = self.bmi {
-            println!("  BMI:       {b:.1}");
+            println!("  {:<14}{b:.1}", "BMI:");
         }
         if let Some(f) = self.body_fat_percent {
-            println!("  Body fat:  {f:.1}%");
+            println!("  {:<14}{f:.1}%", "Body fat:");
         }
         if let Some(m) = self.muscle_mass_kg {
-            println!("  Muscle:    {m:.1} kg");
+            println!("  {:<14}{m:.1} kg", "Muscle:");
         }
         if let Some(b) = self.bone_mass_kg {
-            println!("  Bone:      {b:.1} kg");
+            println!("  {:<14}{b:.1} kg", "Bone:");
         }
         if let Some(w) = self.body_water_percent {
-            println!("  Water:     {w:.1}%");
+            println!("  {:<14}{w:.1}%", "Water:");
         }
         println!();
     }
@@ -471,10 +479,10 @@ impl HumanReadable for SpO2 {
     fn print_human(&self) {
         println!("{}  {}", self.date.bold(), "SpO2".dimmed());
         if let Some(a) = self.avg_spo2 {
-            println!("  Average:   {}%", format!("{a:.0}").cyan());
+            println!("  {:<14}{}%", "Average:", format!("{a:.0}").cyan());
         }
         if let Some(l) = self.lowest_spo2 {
-            println!("  Lowest:    {l:.0}%");
+            println!("  {:<14}{l:.0}%", "Lowest:");
         }
         println!();
     }
@@ -509,13 +517,13 @@ impl HumanReadable for Respiration {
     fn print_human(&self) {
         println!("{}  {}", self.date.bold(), "Respiration".dimmed());
         if let Some(w) = self.avg_waking_br {
-            println!("  Waking:    {w:.1} br/min");
+            println!("  {:<14}{w:.1} br/min", "Waking:");
         }
         if let Some(s) = self.avg_sleeping_br {
-            println!("  Sleeping:  {s:.1} br/min");
+            println!("  {:<14}{s:.1} br/min", "Sleeping:");
         }
         if let (Some(lo), Some(hi)) = (self.lowest_br, self.highest_br) {
-            println!("  Range:     {lo:.1}–{hi:.1} br/min");
+            println!("  {:<14}{lo:.1}\u{2013}{hi:.1} br/min", "Range:");
         }
         println!();
     }
@@ -550,16 +558,17 @@ impl HumanReadable for IntensityMinutes {
         println!("{}  {}", self.date.bold(), "Intensity Minutes".dimmed());
         let goal_str = self
             .weekly_goal
-            .map(|g| format!(" (weekly goal: {g})"))
+            .map(|g| format!(" / {g}"))
             .unwrap_or_default();
         println!(
-            "  Total:     {} min{}",
+            "  {:<14}{} min{}",
+            "Total:",
             self.total.to_string().cyan(),
             goal_str
         );
         println!(
-            "  Moderate:  {} min  Vigorous: {} min",
-            self.moderate, self.vigorous
+            "  {:<14}{} min  Vigorous: {} min",
+            "Moderate:", self.moderate, self.vigorous
         );
         println!();
     }
@@ -592,13 +601,13 @@ impl HumanReadable for Hydration {
         println!("{}  {}", self.date.bold(), "Hydration".dimmed());
         match (self.intake_ml, self.goal_ml) {
             (Some(intake), Some(goal)) => {
-                println!("  Intake:    {:.0} / {:.0} ml", intake, goal);
+                println!("  {:<14}{:.0} / {:.0} ml", "Intake:", intake, goal);
             }
             (Some(intake), None) => {
-                println!("  Intake:    {:.0} ml", intake);
+                println!("  {:<14}{:.0} ml", "Intake:", intake);
             }
             (None, Some(goal)) => {
-                println!("  Goal:      {:.0} ml", goal);
+                println!("  {:<14}{:.0} ml", "Goal:", goal);
             }
             (None, None) => {
                 println!("  No data");

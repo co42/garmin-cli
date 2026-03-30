@@ -154,8 +154,7 @@ fn training_status_from(v: &serde_json::Value, date: &str) -> TrainingStatus {
 
 impl HumanReadable for TrainingStatus {
     fn print_human(&self) {
-        print!("{}  {}", self.date.bold(), "Training Status".bold());
-        println!();
+        println!("{}  {}", self.date.bold(), "Training Status".dimmed());
 
         // Status line
         if let Some(ref s) = self.status {
@@ -453,7 +452,7 @@ impl HumanReadable for TrainingReadiness {
 
 impl HumanReadable for DailyReadiness {
     fn print_human(&self) {
-        println!("{}", self.date.bold());
+        println!("{}  {}", self.date.bold(), "Training Readiness".dimmed());
 
         if let Some(ref m) = self.morning {
             m.print_section("Morning");
@@ -666,12 +665,11 @@ fn race_predictions_from(v: &serde_json::Value) -> RacePredictions {
 
 impl HumanReadable for RacePredictions {
     fn print_human(&self) {
-        let header = if self.date.is_empty() {
-            "Race Predictions".to_string()
+        if self.date.is_empty() {
+            println!("{}", "Race Predictions".bold());
         } else {
-            format!("Race Predictions ({})", self.date)
-        };
-        println!("{}", header.bold());
+            println!("{}  {}", self.date.bold(), "Race Predictions".dimmed());
+        }
         print_race_line("5K", self.time_5k_seconds, self.pace_5k.as_deref());
         print_race_line("10K", self.time_10k_seconds, self.pace_10k.as_deref());
         print_race_line(
@@ -734,19 +732,15 @@ fn endurance_score_from(v: &serde_json::Value) -> EnduranceScore {
 
 impl HumanReadable for EnduranceScore {
     fn print_human(&self) {
+        println!("{}  {}", self.date.bold(), "Endurance Score".dimmed());
         let score = self
             .score
             .map(|s| s.to_string())
-            .unwrap_or_else(|| "–".into());
+            .unwrap_or_else(|| "\u{2013}".into());
         let class = self.classification.as_deref().unwrap_or("?");
-        print!(
-            "{}  Endurance: {} ({})",
-            self.date.bold(),
-            score.cyan(),
-            class
-        );
+        println!("  {:<14}{} ({})", "Score:", score.cyan(), class);
         if let Some(ref fb) = self.feedback {
-            print!("  {fb}");
+            println!("  {:<14}{fb}", "Feedback:");
         }
         println!();
     }
@@ -818,19 +812,18 @@ fn hill_score_from(v: &serde_json::Value) -> HillScore {
 
 impl HumanReadable for HillScore {
     fn print_human(&self) {
-        let overall = self
-            .overall
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| "–".into());
-        print!("{}  Hill Score: {}", self.date.bold(), overall.cyan());
-        if let Some(s) = self.strength {
-            print!("  strength: {s}");
+        println!("{}  {}", self.date.bold(), "Hill Score".dimmed());
+        if let Some(v) = self.overall {
+            println!("  {:<14}{}", "Overall:", v.to_string().cyan());
         }
-        if let Some(e) = self.endurance {
-            print!("  endurance: {e}");
+        if let Some(v) = self.strength {
+            println!("  {:<14}{v}", "Strength:");
+        }
+        if let Some(v) = self.endurance {
+            println!("  {:<14}{v}", "Endurance:");
         }
         if let Some(v) = self.vo2max {
-            print!("  VO2max: {v:.1}");
+            println!("  {:<14}{v:.1}", "VO2max:");
         }
         println!();
     }
@@ -911,33 +904,30 @@ fn fitness_age_from(v: &serde_json::Value, date: &str) -> FitnessAge {
 
 impl HumanReadable for FitnessAge {
     fn print_human(&self) {
+        println!("{}  {}", self.date.bold(), "Fitness Age".dimmed());
         let fa = self
             .fitness_age
             .map(|v| format!("{v:.0}"))
-            .unwrap_or_else(|| "–".into());
+            .unwrap_or_else(|| "\u{2013}".into());
         let ca = self
             .chronological_age
             .map(|v| v.to_string())
             .unwrap_or_else(|| "?".into());
-        println!(
-            "{}  Fitness Age: {} (chronological: {ca})",
-            self.date.bold(),
-            fa.cyan(),
-        );
+        println!("  {:<16}{} (chronological: {ca})", "Age:", fa.cyan());
         if let Some(v) = self.achievable_fitness_age {
-            println!("  Achievable:       {v:.0}");
+            println!("  {:<16}{v:.0}", "Achievable:");
         }
         if let Some(v) = self.bmi {
-            println!("  BMI:              {v:.1}");
+            println!("  {:<16}{v:.1}", "BMI:");
         }
         if let Some(v) = self.resting_heart_rate {
-            println!("  Resting HR:       {v} bpm");
+            println!("  {:<16}{v} bpm", "Resting HR:");
         }
         if let Some(v) = self.vigorous_days_avg {
-            println!("  Vigorous days/wk: {v:.1}");
+            println!("  {:<16}{v:.1}", "Vigorous d/wk:");
         }
         if let Some(v) = self.vigorous_minutes_avg {
-            println!("  Vigorous min/day: {v:.0}");
+            println!("  {:<16}{v:.0}", "Vigorous m/d:");
         }
         println!();
     }
@@ -1022,19 +1012,18 @@ fn lactate_threshold_from(v: &serde_json::Value) -> LactateThreshold {
 
 impl HumanReadable for LactateThreshold {
     fn print_human(&self) {
-        println!("{}", "Lactate Threshold".bold());
-        if let Some(ref d) = self.date {
-            println!("  Date:      {d}");
-        }
+        let date = self.date.as_deref().unwrap_or("?");
+        println!("{}  {}", date.bold(), "Lactate Threshold".dimmed());
         if let Some(hr) = self.heart_rate {
-            println!("  Heart rate: {} bpm", hr.to_string().red());
+            println!("  {:<14}{} bpm", "Heart rate:", hr);
         }
         if let Some(speed) = self.speed_meters_per_second {
-            print!("  Speed:     {speed:.2} m/s");
-            if let Some(ref p) = self.pace {
-                print!(" ({p} /km)");
-            }
-            println!();
+            let pace_str = self
+                .pace
+                .as_ref()
+                .map(|p| format!(" ({p} /km)"))
+                .unwrap_or_default();
+            println!("  {:<14}{speed:.2} m/s{pace_str}", "Speed:");
         }
         println!();
     }

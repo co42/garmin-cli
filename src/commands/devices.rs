@@ -16,20 +16,24 @@ pub struct Device {
 
 impl HumanReadable for Device {
     fn print_human(&self) {
-        println!(
-            "{} ({})",
-            self.device_name.bold(),
-            self.device_type.dimmed()
-        );
-        println!("  ID: {}", self.id);
+        if self.device_type.is_empty() {
+            println!("{}", self.device_name.bold());
+        } else {
+            println!(
+                "{} ({})",
+                self.device_name.bold(),
+                self.device_type.dimmed()
+            );
+        }
+        println!("  {:<14}{}", "ID:", self.id);
         if let Some(ref sn) = self.serial_number {
-            println!("  Serial: {sn}");
+            println!("  {:<14}{sn}", "Serial:");
         }
         if let Some(ref fw) = self.firmware_version {
-            println!("  Firmware: {fw}");
+            println!("  {:<14}{fw}", "Firmware:");
         }
         if let Some(ref sync) = self.last_sync {
-            println!("  Last sync: {sync}");
+            println!("  {:<14}{sync}", "Last sync:");
         }
         println!();
     }

@@ -29,38 +29,42 @@ pub struct DailySummary {
 
 impl HumanReadable for DailySummary {
     fn print_human(&self) {
-        println!("{}", self.date.bold());
+        println!("{}  {}", self.date.bold(), "Daily Summary".dimmed());
         if let Some(v) = self.total_steps {
-            println!("  Steps:          {}", v.to_string().cyan());
+            println!("  {:<16}{}", "Steps:", v.to_string().cyan());
         }
         if let Some(v) = self.total_distance_meters {
-            println!("  Distance:       {:.1} km", v / 1000.0);
+            println!("  {:<16}{:.1} km", "Distance:", v / 1000.0);
         }
         if let Some(v) = self.active_calories {
-            println!("  Active cal:     {:.0}", v);
+            println!("  {:<16}{:.0}", "Active cal:", v);
         }
         if let Some(v) = self.total_calories {
-            println!("  Total cal:      {:.0}", v);
+            println!("  {:<16}{:.0}", "Total cal:", v);
         }
         if let Some(v) = self.resting_heart_rate {
-            println!("  Resting HR:     {} bpm", v.to_string().red());
+            println!("  {:<16}{} bpm", "Resting HR:", v);
         }
         if let Some(v) = self.avg_stress {
-            println!("  Avg stress:     {:.0}", v);
+            let max_str = self
+                .max_stress
+                .map(|m| format!("  Max: {m}"))
+                .unwrap_or_default();
+            println!("  {:<16}{:.0}{}", "Stress:", v, max_str);
         }
-        if let (Some(hi), Some(lo)) = (self.body_battery_high, self.body_battery_low) {
-            println!("  Body battery:   {lo}--{hi}");
+        if let (Some(lo), Some(hi)) = (self.body_battery_low, self.body_battery_high) {
+            println!("  {:<16}{lo}\u{2013}{hi}", "Body battery:");
         }
         if let Some(v) = self.sleep_seconds {
             let h = v / 3600;
             let m = (v % 3600) / 60;
-            println!("  Sleep:          {h}h {m}m");
+            println!("  {:<16}{h}h {m:02}m", "Sleep:");
         }
         if let Some(v) = self.floors_ascended {
-            println!("  Floors up:      {v}");
+            println!("  {:<16}{v}", "Floors up:");
         }
         if let Some(v) = self.intensity_minutes {
-            println!("  Intensity min:  {v}");
+            println!("  {:<16}{v}", "Intensity min:");
         }
         println!();
     }
