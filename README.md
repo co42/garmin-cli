@@ -90,15 +90,15 @@ garmin training zones
 
 | Command | Key fields |
 |---|---|
-| `status` | training_status (PRODUCTIVE/DETRAINING/etc), vo2max, acute_load, chronic_load, acwr, load_balance |
+| `status` | status, fitness_trend (improving/stable/declining), vo2max, acute_load, chronic_load, acwr, load_balance |
 | `readiness` | `{ date, morning, post_activity, latest }` — each with score (0–100) + factor breakdowns. `morning` = wake-up score, `post_activity` = after exercise (absent on rest days), `latest` = real-time score (matches watch display, absent if no update since morning/post-activity) |
 | `scores` | VO2max daily history |
-| `race-predictions` | 5K/10K/half/marathon predicted times and paces |
+| `race-predictions` | 5K/10K/half/marathon predicted times (formatted + seconds) and paces |
 | `endurance-score` | score (0–10000), classification (Base→Elite) |
 | `hill-score` | overall, strength, endurance components |
-| `fitness-age` | fitness_age vs chronological_age, component breakdown |
+| `fitness-age` | date, fitness_age vs chronological_age, component breakdown |
 | `lactate-threshold` | heart_rate (bpm), pace (min/km), speed (m/s) |
-| `zones` | HR zone boundaries in BPM (zone, min_bpm, max_bpm) from latest running activity |
+| `zones` | HR zone boundaries in BPM (zone, min_bpm, max_bpm — max_bpm absent for last zone) from latest running activity |
 
 ### Health
 
@@ -123,16 +123,16 @@ garmin health intensity-minutes [--date DATE] [--days N] [--from DATE --to DATE]
 |---|---|---|
 | `sleep` | sleep_score, total_sleep_seconds, deep/light/rem/awake seconds, start/end times | seconds |
 | `sleep-scores` | overall_score, quality_score, duration_score, recovery_score | 0–100 |
-| `stress` | avg_stress, max_stress, body_battery_high/low | 0–100 |
+| `stress` | avg_stress, max_stress | 0–100 |
 | `heart-rate` | resting_hr, max_hr, min_hr | bpm |
-| `body-battery` | high, low, drain, charge | 0–100 |
+| `body-battery` | body_battery_high, body_battery_low, body_battery_latest | 0–100 |
 | `hrv` | weekly_avg, last_night, balance_status | ms |
 | `steps` | total_steps, distance_meters, goal | meters |
 | `weight` | weight_kg, bmi, body_fat_percent, muscle_mass_kg, bone_mass_kg | kg |
 | `hydration` | intake_ml, goal_ml | ml |
 | `spo2` | avg_spo2, lowest_spo2 | % |
-| `respiration` | avg_waking, avg_sleeping, highest, lowest | breaths/min |
-| `intensity-minutes` | moderate_minutes, vigorous_minutes, weekly_goal | minutes |
+| `respiration` | avg_waking_br, avg_sleeping_br, highest_br, lowest_br | breaths/min |
+| `intensity-minutes` | moderate, vigorous, total, weekly_goal | minutes |
 
 ### Profile
 

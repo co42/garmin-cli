@@ -44,8 +44,9 @@ fn calendar_item_from_json(v: &serde_json::Value) -> CalendarItem {
             .as_str()
             .or_else(|| v["activityTypeDTO"]["typeKey"].as_str())
             .map(Into::into),
-        duration_seconds: v["duration"].as_f64(),
-        distance_meters: v["distance"].as_f64(),
+        // Calendar API returns duration in ms and distance in cm
+        duration_seconds: v["duration"].as_f64().map(|d| d / 1000.0),
+        distance_meters: v["distance"].as_f64().map(|d| d / 100.0),
     }
 }
 

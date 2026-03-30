@@ -27,7 +27,7 @@ pub struct ActivitySummary {
     pub calories: Option<f64>,
     pub avg_hr: Option<f64>,
     pub max_hr: Option<f64>,
-    pub avg_pace: Option<String>,
+    pub moving_duration_seconds: Option<f64>,
     pub pace_min_km: Option<String>,
 
     // Training Effect & Load
@@ -100,8 +100,6 @@ pub struct ActivitySummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub start_longitude: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub moving_duration: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub workout_id: Option<u64>,
 
     // HR zones
@@ -156,8 +154,6 @@ impl HumanReadable for ActivitySummary {
         }
         if let Some(ref pace) = self.pace_min_km {
             println!("  Pace: {pace}");
-        } else if let Some(ref pace) = self.avg_pace {
-            println!("  Avg pace: {pace}");
         }
 
         // Training Effect / Load / VO2max line
@@ -220,6 +216,11 @@ impl HumanReadable for ActivitySummary {
     }
 }
 
+fn normalize_timestamp(s: &str) -> String {
+    // "2026-03-28 09:56:14" → "2026-03-28T09:56:14"
+    s.replacen(' ', "T", 1).trim_end_matches(".0").to_string()
+}
+
 fn activity_from_list(a: &serde_json::Value) -> ActivitySummary {
     let duration_seconds = a["duration"].as_f64().unwrap_or(0.0);
     let distance_meters = a["distance"].as_f64();
@@ -230,13 +231,16 @@ fn activity_from_list(a: &serde_json::Value) -> ActivitySummary {
             .as_str()
             .unwrap_or("unknown")
             .into(),
-        start_time: a["startTimeLocal"].as_str().unwrap_or("").into(),
+        start_time: a["startTimeLocal"]
+            .as_str()
+            .map(normalize_timestamp)
+            .unwrap_or_default(),
         duration_seconds,
         distance_meters,
         calories: a["calories"].as_f64(),
         avg_hr: a["averageHR"].as_f64(),
         max_hr: a["maxHR"].as_f64(),
-        avg_pace: a["averagePace"].as_str().map(Into::into),
+        moving_duration_seconds: a["movingDuration"].as_f64(),
         pace_min_km: compute_pace(distance_meters, duration_seconds),
 
         // Training Effect & Load
@@ -281,7 +285,6 @@ fn activity_from_list(a: &serde_json::Value) -> ActivitySummary {
         location_name: a["locationName"].as_str().map(Into::into),
         start_latitude: a["startLatitude"].as_f64(),
         start_longitude: a["startLongitude"].as_f64(),
-        moving_duration: a["movingDuration"].as_f64(),
         workout_id: a["workoutId"].as_u64(),
 
         // HR zones
@@ -311,13 +314,16 @@ fn activity_from_detail(id: u64, v: &serde_json::Value) -> ActivitySummary {
             .as_str()
             .unwrap_or("unknown")
             .into(),
-        start_time: s["startTimeLocal"].as_str().unwrap_or("").into(),
+        start_time: s["startTimeLocal"]
+            .as_str()
+            .map(normalize_timestamp)
+            .unwrap_or_default(),
         duration_seconds,
         distance_meters,
         calories: s["calories"].as_f64(),
         avg_hr: s["averageHR"].as_f64(),
         max_hr: s["maxHR"].as_f64(),
-        avg_pace: None,
+        moving_duration_seconds: s["movingDuration"].as_f64(),
         pace_min_km: compute_pace(distance_meters, duration_seconds),
 
         // Training Effect & Load
@@ -365,7 +371,6 @@ fn activity_from_detail(id: u64, v: &serde_json::Value) -> ActivitySummary {
         location_name: None,
         start_latitude: s["startLatitude"].as_f64(),
         start_longitude: s["startLongitude"].as_f64(),
-        moving_duration: s["movingDuration"].as_f64(),
         workout_id: v["workoutId"].as_u64(),
 
         // HR zones -- not available from detail endpoint
@@ -666,11 +671,11 @@ pub struct ActivityWeather {
 }
 
 fn fahrenheit_to_celsius(f: f64) -> f64 {
-    (f - 32.0) * 5.0 / 9.0
+    ((f - 32.0) * 5.0 / 9.0 * 10.0).round() / 10.0
 }
 
 fn mph_to_kmh(mph: f64) -> f64 {
-    mph * 1.60934
+    (mph * 1.60934 * 10.0).round() / 10.0
 }
 
 fn weather_from_json(v: &serde_json::Value) -> ActivityWeather {

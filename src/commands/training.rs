@@ -60,9 +60,7 @@ pub struct TrainingStatus {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub status_code: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub fitness_trend: Option<i64>,
+    pub fitness_trend: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fitness_trend_sport: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -126,8 +124,9 @@ fn training_status_from(v: &serde_json::Value, date: &str) -> TrainingStatus {
     TrainingStatus {
         date: date.to_string(),
         status: sd["trainingStatusFeedbackPhrase"].as_str().map(Into::into),
-        status_code: sd["trainingStatus"].as_i64(),
-        fitness_trend: sd["fitnessTrend"].as_i64(),
+        fitness_trend: sd["fitnessTrend"]
+            .as_i64()
+            .map(|c| fitness_trend_label(c).to_string()),
         fitness_trend_sport: sd["fitnessTrendSport"].as_str().map(Into::into),
         training_paused: sd["trainingPaused"].as_bool(),
         since_date: sd["sinceDate"].as_str().map(Into::into),
@@ -169,13 +168,12 @@ impl HumanReadable for TrainingStatus {
         }
 
         // Fitness trend
-        if let Some(trend) = self.fitness_trend {
-            let label = fitness_trend_label(trend);
+        if let Some(ref trend) = self.fitness_trend {
             let sport = self.fitness_trend_sport.as_deref().unwrap_or("");
             if sport.is_empty() {
-                println!("  Fitness trend: {label}");
+                println!("  Fitness trend: {trend}");
             } else {
-                println!("  Fitness trend: {label} ({})", sport.to_lowercase());
+                println!("  Fitness trend: {trend} ({})", sport.to_lowercase());
             }
         }
 
@@ -616,17 +614,25 @@ pub struct RacePredictions {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub time_5k_seconds: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub time_10k_seconds: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub time_half_marathon_seconds: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub time_marathon_seconds: Option<f64>,
+    pub time_5k: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pace_5k: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub time_10k_seconds: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub time_10k: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub pace_10k: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub time_half_marathon_seconds: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub time_half_marathon: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub pace_half_marathon: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub time_marathon_seconds: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub time_marathon: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pace_marathon: Option<String>,
 }
@@ -644,12 +650,16 @@ fn race_predictions_from(v: &serde_json::Value) -> RacePredictions {
             .unwrap_or("")
             .to_string(),
         time_5k_seconds: t5k,
-        time_10k_seconds: t10k,
-        time_half_marathon_seconds: thm,
-        time_marathon_seconds: tm,
+        time_5k: t5k.map(fmt_duration),
         pace_5k: t5k.map(|s| fmt_pace(s, 5000.0)),
+        time_10k_seconds: t10k,
+        time_10k: t10k.map(fmt_duration),
         pace_10k: t10k.map(|s| fmt_pace(s, 10_000.0)),
+        time_half_marathon_seconds: thm,
+        time_half_marathon: thm.map(fmt_duration),
         pace_half_marathon: thm.map(|s| fmt_pace(s, 21_097.5)),
+        time_marathon_seconds: tm,
+        time_marathon: tm.map(fmt_duration),
         pace_marathon: tm.map(|s| fmt_pace(s, 42_195.0)),
     }
 }
@@ -869,6 +879,7 @@ pub async fn hill_score(
 
 #[derive(Debug, Serialize)]
 pub struct FitnessAge {
+    pub date: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fitness_age: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -885,8 +896,9 @@ pub struct FitnessAge {
     pub vigorous_minutes_avg: Option<f64>,
 }
 
-fn fitness_age_from(v: &serde_json::Value) -> FitnessAge {
+fn fitness_age_from(v: &serde_json::Value, date: &str) -> FitnessAge {
     FitnessAge {
+        date: date.to_string(),
         fitness_age: v["fitnessAge"].as_f64(),
         chronological_age: v["chronologicalAge"].as_i64(),
         achievable_fitness_age: v["achievableFitnessAge"].as_f64(),
@@ -907,7 +919,11 @@ impl HumanReadable for FitnessAge {
             .chronological_age
             .map(|v| v.to_string())
             .unwrap_or_else(|| "?".into());
-        println!("Fitness Age: {} (chronological: {ca})", fa.cyan(),);
+        println!(
+            "{}  Fitness Age: {} (chronological: {ca})",
+            self.date.bold(),
+            fa.cyan(),
+        );
         if let Some(v) = self.achievable_fitness_age {
             println!("  Achievable:       {v:.0}");
         }
@@ -931,7 +947,7 @@ pub async fn fitness_age(client: &GarminClient, output: &Output, date: Option<&s
     let date_str = date.map(String::from).unwrap_or_else(today);
     let path = format!("/fitnessage-service/fitnessage/{date_str}");
     let v: serde_json::Value = client.get_json(&path).await?;
-    let item = fitness_age_from(&v);
+    let item = fitness_age_from(&v, &date_str);
     output.print(&item);
     Ok(())
 }
@@ -1044,17 +1060,17 @@ pub async fn lactate_threshold(client: &GarminClient, output: &Output) -> Result
 pub struct HrZoneBoundary {
     pub zone: i64,
     pub min_bpm: i64,
-    pub max_bpm: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_bpm: Option<i64>,
 }
 
 impl HumanReadable for HrZoneBoundary {
     fn print_human(&self) {
-        let range = if self.max_bpm >= 999 {
-            format!("{}+ bpm", self.min_bpm)
-        } else {
-            format!("{}-{} bpm", self.min_bpm, self.max_bpm)
+        let range = match self.max_bpm {
+            Some(max) => format!("{}-{} bpm", self.min_bpm, max),
+            None => format!("{}+ bpm", self.min_bpm),
         };
-        println!("  Zone {}  {}", format!("{}", self.zone).cyan(), range,);
+        println!("  Zone {}  {}", format!("{}", self.zone).cyan(), range);
     }
 }
 
@@ -1088,10 +1104,7 @@ pub async fn zones(client: &GarminClient, output: &Output) -> Result<()> {
     // Build boundaries: each zone's max is the next zone's min - 1
     let mut boundaries: Vec<HrZoneBoundary> = Vec::new();
     for (i, &(zone, min_bpm)) in raw_zones.iter().enumerate() {
-        let max_bpm = raw_zones
-            .get(i + 1)
-            .map(|&(_, next_min)| next_min - 1)
-            .unwrap_or(999);
+        let max_bpm = raw_zones.get(i + 1).map(|&(_, next_min)| next_min - 1);
         boundaries.push(HrZoneBoundary {
             zone,
             min_bpm,

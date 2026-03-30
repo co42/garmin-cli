@@ -129,12 +129,6 @@ pub struct StressSummary {
     pub avg_stress: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_stress: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub body_battery_high: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub body_battery_low: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub body_battery_latest: Option<i64>,
 }
 
 fn extract_body_battery(v: &serde_json::Value) -> (Option<i64>, Option<i64>, Option<i64>) {
@@ -162,14 +156,10 @@ fn extract_body_battery(v: &serde_json::Value) -> (Option<i64>, Option<i64>, Opt
 }
 
 fn stress_summary_from(v: &serde_json::Value, date: &str) -> StressSummary {
-    let (bb_high, bb_low, bb_latest) = extract_body_battery(v);
     StressSummary {
         date: v["calendarDate"].as_str().unwrap_or(date).to_string(),
         avg_stress: v["avgStressLevel"].as_i64(),
         max_stress: v["maxStressLevel"].as_i64(),
-        body_battery_high: bb_high,
-        body_battery_low: bb_low,
-        body_battery_latest: bb_latest,
     }
 }
 
@@ -182,13 +172,6 @@ impl HumanReadable for StressSummary {
                 .map(|m| format!("  Max: {m}"))
                 .unwrap_or_default();
             println!("  Avg:       {}{}", avg.to_string().cyan(), max_str);
-        }
-        if let (Some(lo), Some(hi)) = (self.body_battery_low, self.body_battery_high) {
-            let latest_str = self
-                .body_battery_latest
-                .map(|l| format!("  Latest: {l}"))
-                .unwrap_or_default();
-            println!("  Battery:   {lo}–{hi}{latest_str}");
         }
         println!();
     }
@@ -241,30 +224,30 @@ impl HumanReadable for HeartRateDay {
 pub struct BodyBattery {
     pub date: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub high: Option<i64>,
+    pub body_battery_high: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub low: Option<i64>,
+    pub body_battery_low: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub latest: Option<i64>,
+    pub body_battery_latest: Option<i64>,
 }
 
 fn body_battery_from(v: &serde_json::Value, date: &str) -> BodyBattery {
     let (high, low, latest) = extract_body_battery(v);
     BodyBattery {
         date: v["calendarDate"].as_str().unwrap_or(date).to_string(),
-        high,
-        low,
-        latest,
+        body_battery_high: high,
+        body_battery_low: low,
+        body_battery_latest: latest,
     }
 }
 
 impl HumanReadable for BodyBattery {
     fn print_human(&self) {
         println!("{}  {}", self.date.bold(), "Body Battery".dimmed());
-        if let (Some(lo), Some(hi)) = (self.low, self.high) {
+        if let (Some(lo), Some(hi)) = (self.body_battery_low, self.body_battery_high) {
             println!("  Range:     {lo}–{hi}");
         }
-        if let Some(v) = self.latest {
+        if let Some(v) = self.body_battery_latest {
             println!("  Latest:    {}", v.to_string().cyan());
         }
         println!();
@@ -290,12 +273,18 @@ pub struct HrvSummary {
 
 fn hrv_summary_from(v: &serde_json::Value, date: &str) -> HrvSummary {
     let s = &v["hrvSummary"];
+    let raw_date = v["startTimestampLocal"]
+        .as_str()
+        .or_else(|| v["calendarDate"].as_str())
+        .unwrap_or(date);
+    // Normalize ISO datetime to YYYY-MM-DD
+    let normalized_date = if raw_date.len() >= 10 {
+        &raw_date[..10]
+    } else {
+        raw_date
+    };
     HrvSummary {
-        date: v["startTimestampLocal"]
-            .as_str()
-            .or_else(|| v["calendarDate"].as_str())
-            .unwrap_or(date)
-            .to_string(),
+        date: normalized_date.to_string(),
         weekly_average: s["weeklyAvg"].as_i64(),
         last_night: s["lastNight"].as_i64(),
         status: s["status"].as_str().map(String::from),
@@ -439,26 +428,26 @@ impl HumanReadable for Weight {
 pub struct SpO2 {
     pub date: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub average: Option<f64>,
+    pub avg_spo2: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub lowest: Option<f64>,
+    pub lowest_spo2: Option<f64>,
 }
 
 fn spo2_from(v: &serde_json::Value, date: &str) -> SpO2 {
     SpO2 {
         date: v["calendarDate"].as_str().unwrap_or(date).to_string(),
-        average: v["averageSpO2"].as_f64(),
-        lowest: v["lowestSpO2"].as_f64(),
+        avg_spo2: v["averageSpO2"].as_f64(),
+        lowest_spo2: v["lowestSpO2"].as_f64(),
     }
 }
 
 impl HumanReadable for SpO2 {
     fn print_human(&self) {
         println!("{}  {}", self.date.bold(), "SpO2".dimmed());
-        if let Some(a) = self.average {
+        if let Some(a) = self.avg_spo2 {
             println!("  Average:   {}%", format!("{a:.0}").cyan());
         }
-        if let Some(l) = self.lowest {
+        if let Some(l) = self.lowest_spo2 {
             println!("  Lowest:    {l:.0}%");
         }
         println!();
@@ -471,35 +460,35 @@ impl HumanReadable for SpO2 {
 pub struct Respiration {
     pub date: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub avg_waking: Option<f64>,
+    pub avg_waking_br: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub avg_sleeping: Option<f64>,
+    pub avg_sleeping_br: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub highest: Option<f64>,
+    pub highest_br: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub lowest: Option<f64>,
+    pub lowest_br: Option<f64>,
 }
 
 fn respiration_from(v: &serde_json::Value, date: &str) -> Respiration {
     Respiration {
         date: v["calendarDate"].as_str().unwrap_or(date).to_string(),
-        avg_waking: v["avgWakingRespirationValue"].as_f64(),
-        avg_sleeping: v["avgSleepRespirationValue"].as_f64(),
-        highest: v["highestRespirationValue"].as_f64(),
-        lowest: v["lowestRespirationValue"].as_f64(),
+        avg_waking_br: v["avgWakingRespirationValue"].as_f64(),
+        avg_sleeping_br: v["avgSleepRespirationValue"].as_f64(),
+        highest_br: v["highestRespirationValue"].as_f64(),
+        lowest_br: v["lowestRespirationValue"].as_f64(),
     }
 }
 
 impl HumanReadable for Respiration {
     fn print_human(&self) {
         println!("{}  {}", self.date.bold(), "Respiration".dimmed());
-        if let Some(w) = self.avg_waking {
+        if let Some(w) = self.avg_waking_br {
             println!("  Waking:    {w:.1} br/min");
         }
-        if let Some(s) = self.avg_sleeping {
+        if let Some(s) = self.avg_sleeping_br {
             println!("  Sleeping:  {s:.1} br/min");
         }
-        if let (Some(lo), Some(hi)) = (self.lowest, self.highest) {
+        if let (Some(lo), Some(hi)) = (self.lowest_br, self.highest_br) {
             println!("  Range:     {lo:.1}–{hi:.1} br/min");
         }
         println!();
@@ -511,19 +500,21 @@ impl HumanReadable for Respiration {
 #[derive(Debug, Serialize)]
 pub struct IntensityMinutes {
     pub date: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub moderate: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub vigorous: Option<i64>,
+    pub moderate: i64,
+    pub vigorous: i64,
+    pub total: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub weekly_goal: Option<i64>,
 }
 
 fn intensity_minutes_from(v: &serde_json::Value, date: &str) -> IntensityMinutes {
+    let moderate = v["moderateValue"].as_i64().unwrap_or(0);
+    let vigorous = v["vigorousValue"].as_i64().unwrap_or(0);
     IntensityMinutes {
         date: v["calendarDate"].as_str().unwrap_or(date).to_string(),
-        moderate: v["moderateValue"].as_i64(),
-        vigorous: v["vigorousValue"].as_i64(),
+        moderate,
+        vigorous,
+        total: moderate + vigorous,
         weekly_goal: v["weeklyGoal"].as_i64(),
     }
 }
@@ -531,15 +522,19 @@ fn intensity_minutes_from(v: &serde_json::Value, date: &str) -> IntensityMinutes
 impl HumanReadable for IntensityMinutes {
     fn print_human(&self) {
         println!("{}  {}", self.date.bold(), "Intensity Minutes".dimmed());
-        let m = self.moderate.unwrap_or(0);
-        let v = self.vigorous.unwrap_or(0);
-        let total = m + v;
         let goal_str = self
             .weekly_goal
             .map(|g| format!(" (weekly goal: {g})"))
             .unwrap_or_default();
-        println!("  Total:     {} min{}", total.to_string().cyan(), goal_str);
-        println!("  Moderate:  {m} min  Vigorous: {v} min");
+        println!(
+            "  Total:     {} min{}",
+            self.total.to_string().cyan(),
+            goal_str
+        );
+        println!(
+            "  Moderate:  {} min  Vigorous: {} min",
+            self.moderate, self.vigorous
+        );
         println!();
     }
 }
@@ -561,19 +556,27 @@ fn hydration_from(v: &serde_json::Value, date: &str) -> Hydration {
         intake_ml: v["valueInML"].as_f64().or_else(|| v["intakeInML"].as_f64()),
         goal_ml: v["goalInML"]
             .as_f64()
-            .or_else(|| v["dailyGoalInML"].as_f64()),
+            .or_else(|| v["dailyGoalInML"].as_f64())
+            .map(|g| g.round()),
     }
 }
 
 impl HumanReadable for Hydration {
     fn print_human(&self) {
         println!("{}  {}", self.date.bold(), "Hydration".dimmed());
-        if let Some(ml) = self.intake_ml {
-            let goal_str = self
-                .goal_ml
-                .map(|g| format!(" / {:.0} ml", g))
-                .unwrap_or_default();
-            println!("  Intake:    {:.0} ml{}", ml, goal_str);
+        match (self.intake_ml, self.goal_ml) {
+            (Some(intake), Some(goal)) => {
+                println!("  Intake:    {:.0} / {:.0} ml", intake, goal);
+            }
+            (Some(intake), None) => {
+                println!("  Intake:    {:.0} ml", intake);
+            }
+            (None, Some(goal)) => {
+                println!("  Goal:      {:.0} ml", goal);
+            }
+            (None, None) => {
+                println!("  No data");
+            }
         }
         println!();
     }
