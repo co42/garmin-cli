@@ -121,13 +121,13 @@ garmin health intensity-minutes [--date DATE] [--days N] [--from DATE --to DATE]
 
 | Command | Key fields | Units |
 |---|---|---|
-| `sleep` | sleep_score, total_sleep_seconds, deep/light/rem/awake seconds, start/end times | seconds |
-| `sleep-scores` | overall_score, quality_score, duration_score, recovery_score | 0–100 |
+| `sleep` | sleep_score, sleep_score_qualifier, sleep_seconds, deep/light/rem/awake seconds, start/end times, sleep_need_seconds | seconds |
+| `sleep-scores` | score | 0–100 |
 | `stress` | avg_stress, max_stress | 0–100 |
 | `heart-rate` | resting_hr, max_hr, min_hr | bpm |
 | `body-battery` | body_battery_high, body_battery_low, body_battery_latest | 0–100 |
-| `hrv` | weekly_avg, last_night, balance_status | ms |
-| `steps` | total_steps, distance_meters, goal | meters |
+| `hrv` | last_night_avg, last_night_5min_high, weekly_average, status, baseline_balanced_low/upper | ms |
+| `steps` | total_steps, step_goal, total_distance_meters | meters |
 | `weight` | weight_kg, bmi, body_fat_percent, muscle_mass_kg, bone_mass_kg | kg |
 | `hydration` | intake_ml, goal_ml | ml |
 | `spo2` | avg_spo2, lowest_spo2 | % |
