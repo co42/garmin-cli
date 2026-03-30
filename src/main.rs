@@ -315,8 +315,9 @@ enum TrainingCommands {
         #[arg(long, requires = "from")]
         to: Option<String>,
     },
-    /// Training scores (VO2max, maxmet)
-    Scores {
+    /// VO2max history
+    #[command(alias = "scores")]
+    Vo2max {
         #[arg(long, group = "date_selector")]
         date: Option<String>,
         #[arg(long)]
@@ -358,7 +359,8 @@ enum TrainingCommands {
     /// Lactate threshold (speed and HR)
     LactateThreshold,
     /// Heart rate zones (from most recent running activity)
-    Zones,
+    #[command(alias = "zones")]
+    HrZones,
 }
 
 #[derive(Subcommand)]
@@ -780,7 +782,7 @@ async fn run(command: Commands, output: &Output) -> std::result::Result<(), Erro
                     let (date, days) = resolve_date_range(date, days, from, to)?;
                     commands::training::readiness(&client, output, date.as_deref(), days).await
                 }
-                TrainingCommands::Scores {
+                TrainingCommands::Vo2max {
                     date,
                     days,
                     from,
@@ -817,7 +819,7 @@ async fn run(command: Commands, output: &Output) -> std::result::Result<(), Erro
                 TrainingCommands::LactateThreshold => {
                     commands::training::lactate_threshold(&client, output).await
                 }
-                TrainingCommands::Zones => commands::training::zones(&client, output).await,
+                TrainingCommands::HrZones => commands::training::zones(&client, output).await,
             }
         }
 

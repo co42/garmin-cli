@@ -36,6 +36,10 @@ fn fmt_timestamp(ts: Option<i64>) -> Option<String> {
 pub struct SleepSummary {
     pub date: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub sleep_score: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sleep_score_qualifier: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub sleep_seconds: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub deep_sleep_seconds: Option<u64>,
@@ -57,6 +61,10 @@ fn sleep_summary_from(v: &serde_json::Value, date: &str) -> SleepSummary {
     let dto = &v["dailySleepDTO"];
     SleepSummary {
         date: dto["calendarDate"].as_str().unwrap_or(date).to_string(),
+        sleep_score: dto["sleepScores"]["overall"]["value"].as_i64(),
+        sleep_score_qualifier: dto["sleepScores"]["overall"]["qualifierKey"]
+            .as_str()
+            .map(Into::into),
         sleep_seconds: dto["sleepTimeSeconds"].as_u64(),
         deep_sleep_seconds: dto["deepSleepSeconds"].as_u64(),
         light_sleep_seconds: dto["lightSleepSeconds"].as_u64(),
@@ -71,6 +79,14 @@ fn sleep_summary_from(v: &serde_json::Value, date: &str) -> SleepSummary {
 impl HumanReadable for SleepSummary {
     fn print_human(&self) {
         println!("{}  {}", self.date.bold(), "Sleep".dimmed());
+        if let Some(score) = self.sleep_score {
+            let qualifier = self
+                .sleep_score_qualifier
+                .as_deref()
+                .map(|q| format!(" ({q})"))
+                .unwrap_or_default();
+            println!("  Score:     {}{}", score.to_string().cyan(), qualifier);
+        }
         if let Some(s) = self.sleep_seconds {
             println!("  Duration:  {}", fmt_duration(s).cyan());
         }
@@ -260,15 +276,17 @@ impl HumanReadable for BodyBattery {
 pub struct HrvSummary {
     pub date: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub weekly_average: Option<i64>,
+    pub last_night_avg: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub last_night: Option<i64>,
+    pub last_night_5min_high: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub weekly_average: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub baseline_low: Option<i64>,
+    pub baseline_balanced_low: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub baseline_high: Option<i64>,
+    pub baseline_balanced_upper: Option<i64>,
 }
 
 fn hrv_summary_from(v: &serde_json::Value, date: &str) -> HrvSummary {
@@ -285,19 +303,27 @@ fn hrv_summary_from(v: &serde_json::Value, date: &str) -> HrvSummary {
     };
     HrvSummary {
         date: normalized_date.to_string(),
+        last_night_avg: s["lastNightAvg"].as_i64().or(s["lastNight"].as_i64()),
+        last_night_5min_high: s["lastNight5MinHigh"].as_i64(),
         weekly_average: s["weeklyAvg"].as_i64(),
-        last_night: s["lastNight"].as_i64(),
         status: s["status"].as_str().map(String::from),
-        baseline_low: s["baselineLowUpper"].as_i64(),
-        baseline_high: s["baselineBalancedUpper"].as_i64(),
+        baseline_balanced_low: s["baseline"]["balancedLow"]
+            .as_i64()
+            .or(s["baselineLowUpper"].as_i64()),
+        baseline_balanced_upper: s["baseline"]["balancedUpper"]
+            .as_i64()
+            .or(s["baselineBalancedUpper"].as_i64()),
     }
 }
 
 impl HumanReadable for HrvSummary {
     fn print_human(&self) {
         println!("{}  {}", self.date.bold(), "HRV".dimmed());
-        if let Some(v) = self.last_night {
+        if let Some(v) = self.last_night_avg {
             println!("  Last night:  {} ms", v.to_string().cyan());
+        }
+        if let Some(v) = self.last_night_5min_high {
+            println!("  5-min high:  {v} ms");
         }
         if let Some(v) = self.weekly_average {
             println!("  Weekly avg:  {v} ms");
@@ -305,7 +331,7 @@ impl HumanReadable for HrvSummary {
         if let Some(ref s) = self.status {
             println!("  Status:      {s}");
         }
-        if let (Some(lo), Some(hi)) = (self.baseline_low, self.baseline_high) {
+        if let (Some(lo), Some(hi)) = (self.baseline_balanced_low, self.baseline_balanced_upper) {
             println!("  Baseline:    {lo}–{hi} ms");
         }
         println!();

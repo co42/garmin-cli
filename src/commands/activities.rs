@@ -449,9 +449,54 @@ pub async fn list(
 }
 
 pub async fn get(client: &GarminClient, output: &Output, id: u64) -> Result<()> {
-    let path = format!("/activity-service/activity/{id}");
-    let v: serde_json::Value = client.get_json(&path).await?;
-    let summary = activity_from_detail(id, &v);
+    // Fetch both detail and list views to get a complete superset of fields.
+    // Detail has summaryDTO (running dynamics, etc.), list has splits/zones/location.
+    let detail_path = format!("/activity-service/activity/{id}");
+    let list_path = format!(
+        "/activitylist-service/activities/search/activities?limit=1&start=0&activityId={id}"
+    );
+    let (detail, list_result) = tokio::join!(
+        client.get_json::<serde_json::Value>(&detail_path),
+        client.get_json::<serde_json::Value>(&list_path),
+    );
+    let detail = detail?;
+    let mut summary = activity_from_detail(id, &detail);
+
+    // Merge list-only fields if the list call succeeded
+    if let Ok(list_val) = list_result
+        && let Some(a) = list_val.as_array().and_then(|arr| arr.first())
+    {
+        if summary.vo2max_value.is_none() {
+            summary.vo2max_value = a["vO2MaxValue"].as_f64();
+        }
+        if summary.location_name.is_none() {
+            summary.location_name = a["locationName"].as_str().map(Into::into);
+        }
+        if summary.fastest_split_1000.is_none() {
+            summary.fastest_split_1000 = a["fastestSplit_1000"].as_f64();
+        }
+        if summary.fastest_split_1609.is_none() {
+            summary.fastest_split_1609 = a["fastestSplit_1609"].as_f64();
+        }
+        if summary.fastest_split_5000.is_none() {
+            summary.fastest_split_5000 = a["fastestSplit_5000"].as_f64();
+        }
+        if summary.hr_time_in_zone_1.is_none() {
+            summary.hr_time_in_zone_1 = a["hrTimeInZone_1"].as_f64();
+            summary.hr_time_in_zone_2 = a["hrTimeInZone_2"].as_f64();
+            summary.hr_time_in_zone_3 = a["hrTimeInZone_3"].as_f64();
+            summary.hr_time_in_zone_4 = a["hrTimeInZone_4"].as_f64();
+            summary.hr_time_in_zone_5 = a["hrTimeInZone_5"].as_f64();
+        }
+        if summary.power_time_in_zone_1.is_none() {
+            summary.power_time_in_zone_1 = a["powerTimeInZone_1"].as_f64();
+            summary.power_time_in_zone_2 = a["powerTimeInZone_2"].as_f64();
+            summary.power_time_in_zone_3 = a["powerTimeInZone_3"].as_f64();
+            summary.power_time_in_zone_4 = a["powerTimeInZone_4"].as_f64();
+            summary.power_time_in_zone_5 = a["powerTimeInZone_5"].as_f64();
+        }
+    }
+
     output.print(&summary);
     Ok(())
 }
