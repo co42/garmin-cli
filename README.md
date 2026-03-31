@@ -153,8 +153,13 @@ garmin summary --days 7                # Last 7 days
 
 ```bash
 garmin courses list                    # Saved GPX routes
-garmin courses get <ID>                # Course details (distance, elevation, coordinates)
+garmin courses get <ID>                # Course details with full metadata and track points
 ```
+
+| Command | Key fields |
+|---|---|
+| `list` | id, name, description, activity_type, distance_meters, elevation_gain/loss_meters, start_latitude, start_longitude, favorite, public, has_pace_band, has_power_guide, has_turn_detection_disabled, speed_meters_per_second, elapsed_seconds, elevation_source, start_note, finish_note, cutoff_duration, created_date, update_date |
+| `get` | All list fields plus: start_point (latitude, longitude, elevation), bounding_box (lower_left, upper_right), include_laps, matched_to_segments, course_segments (sort_order, distance_meters, num_points), geo_points (latitude, longitude, elevation, distance) |
 
 ### Badges
 
