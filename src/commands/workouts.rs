@@ -253,7 +253,7 @@ pub async fn delete(client: &GarminClient, output: &Output, id: u64) -> Result<(
 //   stepTypeId:     1=warmup, 2=cooldown, 3=interval, 4=recovery, 5=rest
 //   conditionTypeId: 1=lap.button, 2=time, 3=distance
 //   targetTypeId:   4=heart.rate.zone, 6=pace.zone
-//   Pace targets:   m/s (e.g. 3.774 = 4:25/km).  Convert: 1000 / seconds_per_km = m/s
+//   Pace targets:   seconds per km (e.g. 265 = 4:25/km, 285 = 4:45/km)
 //   HR targets:     BPM values (e.g. targetValueOne=120, targetValueTwo=150)
 //                   Zone numbers (1-5) do NOT work - the watch interprets them
 //                   as literal BPM. Always use actual BPM values.
@@ -286,7 +286,7 @@ pub fn template(output: &Output, kind: &str) {
                                 "endCondition": { "conditionTypeId": 3, "conditionTypeKey": "distance" },
                                 "endConditionValue": 400,
                                 "targetType": { "workoutTargetTypeId": 6, "workoutTargetTypeKey": "pace.zone" },
-                                "targetValueOne": 3.922, "targetValueTwo": 4.444,
+                                "targetValueOne": 225, "targetValueTwo": 255,
                                 "description": "Z5 VO2max (~3:45-4:15/km)"
                             },
                             {
@@ -328,7 +328,7 @@ pub fn template(output: &Output, kind: &str) {
                         "endCondition": { "conditionTypeId": 2, "conditionTypeKey": "time" },
                         "endConditionValue": 1200,
                         "targetType": { "workoutTargetTypeId": 6, "workoutTargetTypeKey": "pace.zone" },
-                        "targetValueOne": 3.509, "targetValueTwo": 3.774,
+                        "targetValueOne": 265, "targetValueTwo": 285,
                         "description": "Z4 Threshold (~4:25-4:45/km)"
                     },
                     {
