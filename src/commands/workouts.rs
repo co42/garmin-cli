@@ -172,8 +172,9 @@ fn format_target(step: &serde_json::Value) -> String {
 
     match target_key {
         "pace.zone" => {
-            let fmt_pace = |secs: f64| -> String {
-                let s = secs as u64;
+            // API stores pace as m/s; convert to min:sec/km for display
+            let fmt_pace = |speed_ms: f64| -> String {
+                let s = (1000.0 / speed_ms) as u64;
                 format!("{}:{:02}/km", s / 60, s % 60)
             };
             match (v1, v2) {
@@ -253,7 +254,9 @@ pub async fn delete(client: &GarminClient, output: &Output, id: u64) -> Result<(
 //   stepTypeId:     1=warmup, 2=cooldown, 3=interval, 4=recovery, 5=rest
 //   conditionTypeId: 1=lap.button, 2=time, 3=distance
 //   targetTypeId:   4=heart.rate.zone, 6=pace.zone
-//   Pace targets:   seconds per km (e.g. 265 = 4:25/km, 285 = 4:45/km)
+//   Pace targets:   m/s (e.g. 3.774 = 4:25/km, 3.509 = 4:45/km).
+//                   Convert: m/s = 1000 / seconds_per_km
+//                   targetValueOne = slower bound (lower m/s), targetValueTwo = faster bound
 //   HR targets:     BPM values (e.g. targetValueOne=120, targetValueTwo=150)
 //                   Zone numbers (1-5) do NOT work - the watch interprets them
 //                   as literal BPM. Always use actual BPM values.
@@ -286,7 +289,7 @@ pub fn template(output: &Output, kind: &str) {
                                 "endCondition": { "conditionTypeId": 3, "conditionTypeKey": "distance" },
                                 "endConditionValue": 400,
                                 "targetType": { "workoutTargetTypeId": 6, "workoutTargetTypeKey": "pace.zone" },
-                                "targetValueOne": 225, "targetValueTwo": 255,
+                                "targetValueOne": 3.922, "targetValueTwo": 4.444,
                                 "description": "Z5 VO2max (~3:45-4:15/km)"
                             },
                             {
@@ -328,7 +331,7 @@ pub fn template(output: &Output, kind: &str) {
                         "endCondition": { "conditionTypeId": 2, "conditionTypeKey": "time" },
                         "endConditionValue": 1200,
                         "targetType": { "workoutTargetTypeId": 6, "workoutTargetTypeKey": "pace.zone" },
-                        "targetValueOne": 265, "targetValueTwo": 285,
+                        "targetValueOne": 3.509, "targetValueTwo": 3.774,
                         "description": "Z4 Threshold (~4:25-4:45/km)"
                     },
                     {

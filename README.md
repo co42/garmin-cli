@@ -181,6 +181,8 @@ garmin workouts template [--type interval|tempo|easy|long-run]
 
 `get` shows the full step structure in human mode (step types, targets, descriptions, repeat groups) and returns the raw API response in JSON mode. Templates include all required API IDs and description fields — they can be used directly with `create`.
 
+Pace targets use **m/s** (convert: `m/s = 1000 / sec_per_km`, e.g. 4:25/km → 3.774). HR targets use **BPM values**, not zone numbers — use `garmin training hr-zones` to get your boundaries.
+
 ### Calendar
 
 ```bash
