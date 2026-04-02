@@ -174,7 +174,7 @@ fn format_target(step: &serde_json::Value) -> String {
         "pace.zone" => {
             // API stores pace as m/s; convert to min:sec/km for display
             let fmt_pace = |speed_ms: f64| -> String {
-                let s = (1000.0 / speed_ms) as u64;
+                let s = (1000.0 / speed_ms).round() as u64;
                 format!("{}:{:02}/km", s / 60, s % 60)
             };
             match (v1, v2) {
