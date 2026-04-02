@@ -178,7 +178,7 @@ fn format_target(step: &serde_json::Value) -> String {
                 format!("{}:{:02}/km", s / 60, s % 60)
             };
             match (v1, v2) {
-                (Some(a), Some(b)) => format!("{}-{}", fmt_pace(a), fmt_pace(b)),
+                (Some(a), Some(b)) => format!("{}-{}", fmt_pace(b), fmt_pace(a)),
                 _ => "pace target".into(),
             }
         }
