@@ -1017,13 +1017,8 @@ impl HumanReadable for LactateThreshold {
         if let Some(hr) = self.heart_rate {
             println!("  {:<14}{} bpm", "Heart rate:", hr);
         }
-        if let Some(speed) = self.speed_meters_per_second {
-            let pace_str = self
-                .pace
-                .as_ref()
-                .map(|p| format!(" ({p} /km)"))
-                .unwrap_or_default();
-            println!("  {:<14}{speed:.2} m/s{pace_str}", "Speed:");
+        if let Some(ref pace) = self.pace {
+            println!("  {:<14}{pace} /km", "Speed:");
         }
         println!();
     }

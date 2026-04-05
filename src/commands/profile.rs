@@ -214,11 +214,7 @@ impl HumanReadable for ProfileSettings {
             let pace_secs = (1000.0 / speed) as u64;
             let min = pace_secs / 60;
             let sec = pace_secs % 60;
-            println!(
-                "  {:<28}{:.4} m/s ({min}:{sec:02} /km)",
-                "LT speed:".dimmed(),
-                speed
-            );
+            println!("  {:<28}{min}:{sec:02} /km", "LT speed:".dimmed());
         }
         if let Some(vo2) = self.vo2max_running {
             println!("  {:<28}{:.1}", "VO2max (running):".dimmed(), vo2);
