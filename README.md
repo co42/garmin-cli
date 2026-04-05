@@ -138,8 +138,28 @@ garmin health intensity-minutes [--date DATE] [--days N] [--from DATE --to DATE]
 
 ```bash
 garmin profile show                    # Display name, profile info
-garmin profile settings                # User settings (weight in kg, units, etc.)
+garmin profile settings                # Biometrics, thresholds, training preferences
+garmin profile settings set            # Update user settings (partial update)
+  --max-hr <BPM>                       # Max heart rate (via biometric service)
+  --resting-hr <BPM>                   # Resting heart rate (via biometric service)
+  --weight <KG>                        # Weight (converted to grams for API)
+  --height <CM>                        # Height
+  --lactate-threshold-hr <BPM>         # Lactate threshold HR
+  --lactate-threshold-speed <M/S>      # Lactate threshold speed
+  --threshold-hr-auto-detected <BOOL>  # LT HR auto-detection on/off
+  --resting-hr-auto-update <BOOL>     # Resting HR auto-update from device (via biometric service)
+  --vo2max-running <VALUE>             # VO2max running (display-only, does not affect device)
+  --training-status-paused             # Pause training status (sets date to today)
+  --training-status-resumed            # Resume training status (clears paused date)
+  --sleep-time <HH:MM>                # Sleep time
+  --wake-time <HH:MM>                 # Wake time
 ```
+
+| Command | Key fields |
+|---|---|
+| `settings` | weight_kg, height_cm, birth_date, gender, handedness, max_hr, resting_hr, lactate_threshold_hr, lactate_threshold_speed, threshold_hr_auto_detected, vo2max_running, vo2max_cycling, ftp, ftp_auto_detected, training_status_paused_date, measurement_system, time_format, available_training_days, preferred_long_training_days, sleep_time, wake_time |
+
+`settings set` does a partial update — only provided flags are changed. Shows before/after values in human mode, returns `{"field": {"old": ..., "new": ...}}` in JSON mode. Max HR and resting HR are stored in the biometric service (heartRateZones endpoint), not in user-settings.
 
 ### Daily Summary
 
