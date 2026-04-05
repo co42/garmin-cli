@@ -166,8 +166,57 @@ enum AuthCommands {
 enum ProfileCommands {
     /// Show user profile
     Show,
-    /// Show user settings
-    Settings,
+    /// User settings (show or update)
+    Settings {
+        #[command(subcommand)]
+        command: Option<SettingsCommands>,
+    },
+}
+
+#[derive(Subcommand)]
+enum SettingsCommands {
+    /// Update user settings
+    Set {
+        /// Max heart rate (bpm)
+        #[arg(long)]
+        max_hr: Option<u16>,
+        /// Resting heart rate (bpm)
+        #[arg(long)]
+        resting_hr: Option<u16>,
+        /// Weight (kg, converted to grams for the API)
+        #[arg(long)]
+        weight: Option<f64>,
+        /// Height (cm)
+        #[arg(long)]
+        height: Option<f64>,
+        /// Lactate threshold heart rate (bpm)
+        #[arg(long)]
+        lactate_threshold_hr: Option<u16>,
+        /// Lactate threshold speed (m/s)
+        #[arg(long)]
+        lactate_threshold_speed: Option<f64>,
+        /// Whether lactate threshold HR is auto-detected
+        #[arg(long)]
+        threshold_hr_auto_detected: Option<bool>,
+        /// Whether resting HR auto-updates from device
+        #[arg(long)]
+        resting_hr_auto_update: Option<bool>,
+        /// VO2max running
+        #[arg(long)]
+        vo2max_running: Option<f64>,
+        /// Pause training status (sets date to today)
+        #[arg(long)]
+        training_status_paused: bool,
+        /// Resume training status (clears paused date)
+        #[arg(long)]
+        training_status_resumed: bool,
+        /// Sleep time (HH:MM)
+        #[arg(long)]
+        sleep_time: Option<String>,
+        /// Wake time (HH:MM)
+        #[arg(long)]
+        wake_time: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -649,7 +698,45 @@ async fn run(command: Commands, output: &Output) -> std::result::Result<(), Erro
             let client = GarminClient::new(require_auth()?)?;
             match command {
                 ProfileCommands::Show => commands::profile::show(&client, output).await,
-                ProfileCommands::Settings => commands::profile::settings(&client, output).await,
+                ProfileCommands::Settings { command } => match command {
+                    None => commands::profile::settings(&client, output).await,
+                    Some(SettingsCommands::Set {
+                        max_hr,
+                        resting_hr,
+                        weight,
+                        height,
+                        lactate_threshold_hr,
+                        lactate_threshold_speed,
+                        threshold_hr_auto_detected,
+                        resting_hr_auto_update,
+                        vo2max_running,
+                        training_status_paused,
+                        training_status_resumed,
+                        sleep_time,
+                        wake_time,
+                    }) => {
+                        commands::profile::settings_set(
+                            &client,
+                            output,
+                            commands::profile::SettingsSetArgs {
+                                max_hr,
+                                resting_hr,
+                                weight,
+                                height,
+                                lactate_threshold_hr,
+                                lactate_threshold_speed,
+                                threshold_hr_auto_detected,
+                                resting_hr_auto_update,
+                                vo2max_running,
+                                training_status_paused,
+                                training_status_resumed,
+                                sleep_time,
+                                wake_time,
+                            },
+                        )
+                        .await
+                    }
+                },
             }
         }
 
