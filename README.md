@@ -80,7 +80,7 @@ Activity summaries include ~50 fields: basics (distance, duration, HR), training
 garmin training status [--date DATE] [--days N] [--from DATE --to DATE]
 garmin training readiness [--date DATE] [--days N] [--from DATE --to DATE]
 garmin training vo2max [--date DATE] [--days N] [--from DATE --to DATE]
-garmin training race-predictions
+garmin training race-predictions [--from DATE --to DATE]
 garmin training endurance-score [--date DATE] [--days N] [--from DATE --to DATE]
 garmin training hill-score [--date DATE] [--days N] [--from DATE --to DATE]
 garmin training fitness-age [--date DATE]
@@ -90,10 +90,10 @@ garmin training hr-zones
 
 | Command | Key fields |
 |---|---|
-| `status` | status, fitness_trend (improving/stable/declining), vo2max, acute_load, chronic_load, acwr, load_balance |
+| `status` | status, fitness_trend (improving/stable/declining), vo2max, acute_load, chronic_load, min/max_training_load_chronic, acwr, load_balance, monthly_load targets |
 | `readiness` | `{ date, morning, post_activity, latest }` — each with score (0–100) + factor breakdowns. `morning` = wake-up score, `post_activity` = after exercise (absent on rest days), `latest` = real-time score (matches watch display, absent if no update since morning/post-activity) |
 | `vo2max` | VO2max daily history (alias: `scores`) |
-| `race-predictions` | 5K/10K/half/marathon predicted times (formatted + seconds) and paces |
+| `race-predictions` | 5K/10K/half/marathon predicted times (formatted + seconds) and paces. Supports `--from`/`--to` for daily prediction history |
 | `endurance-score` | score (0–10000), classification (Base→Elite) |
 | `hill-score` | overall, strength, endurance components |
 | `fitness-age` | date, fitness_age vs chronological_age, component breakdown |
