@@ -76,6 +76,10 @@ pub struct TrainingStatus {
     pub acwr: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub acwr_status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_training_load_chronic: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_training_load_chronic: Option<f64>,
     // Load balance
     #[serde(skip_serializing_if = "Option::is_none")]
     pub monthly_load_aerobic_high: Option<f64>,
@@ -136,6 +140,8 @@ fn training_status_from(v: &serde_json::Value, date: &str) -> TrainingStatus {
         acwr_status: sd["acuteTrainingLoadDTO"]["acwrStatus"]
             .as_str()
             .map(Into::into),
+        min_training_load_chronic: sd["acuteTrainingLoadDTO"]["minTrainingLoadChronic"].as_f64(),
+        max_training_load_chronic: sd["acuteTrainingLoadDTO"]["maxTrainingLoadChronic"].as_f64(),
         monthly_load_aerobic_high: lb["monthlyLoadAerobicHigh"].as_f64(),
         monthly_load_aerobic_high_target_min: lb["monthlyLoadAerobicHighTargetMin"].as_i64(),
         monthly_load_aerobic_high_target_max: lb["monthlyLoadAerobicHighTargetMax"].as_i64(),
@@ -694,12 +700,38 @@ fn print_race_line(name: &str, secs: Option<f64>, pace: Option<&str>) {
     }
 }
 
-pub async fn race_predictions(client: &GarminClient, output: &Output) -> Result<()> {
+pub async fn race_predictions(
+    client: &GarminClient,
+    output: &Output,
+    from: Option<&str>,
+    to: Option<&str>,
+) -> Result<()> {
     let display_name = client.display_name().await?;
-    let path = format!("/metrics-service/metrics/racepredictions/latest/{display_name}");
-    let v: serde_json::Value = client.get_json(&path).await?;
-    let item = race_predictions_from(&v);
-    output.print(&item);
+
+    if let Some(from_str) = from {
+        let to_str = to.map(String::from).unwrap_or_else(today);
+        let path = format!(
+            "/metrics-service/metrics/racepredictions/daily/{display_name}?fromCalendarDate={from_str}&toCalendarDate={to_str}"
+        );
+        let v: serde_json::Value = client.get_json(&path).await?;
+
+        let items: Vec<RacePredictions> = v
+            .as_array()
+            .map(|arr| arr.iter().map(race_predictions_from).collect())
+            .unwrap_or_default();
+
+        if items.len() == 1 {
+            output.print(&items[0]);
+        } else {
+            output.print_list(&items, "Race Predictions");
+        }
+    } else {
+        let path = format!("/metrics-service/metrics/racepredictions/latest/{display_name}");
+        let v: serde_json::Value = client.get_json(&path).await?;
+        let item = race_predictions_from(&v);
+        output.print(&item);
+    }
+
     Ok(())
 }
 

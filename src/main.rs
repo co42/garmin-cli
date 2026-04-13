@@ -377,7 +377,12 @@ enum TrainingCommands {
         to: Option<String>,
     },
     /// Race predictions (5K, 10K, half, marathon)
-    RacePredictions,
+    RacePredictions {
+        #[arg(long)]
+        from: Option<String>,
+        #[arg(long, requires = "from")]
+        to: Option<String>,
+    },
     /// Endurance score
     EnduranceScore {
         #[arg(long, group = "date_selector")]
@@ -878,8 +883,14 @@ async fn run(command: Commands, output: &Output) -> std::result::Result<(), Erro
                     let (date, days) = resolve_date_range(date, days, from, to)?;
                     commands::training::scores(&client, output, date.as_deref(), days).await
                 }
-                TrainingCommands::RacePredictions => {
-                    commands::training::race_predictions(&client, output).await
+                TrainingCommands::RacePredictions { from, to } => {
+                    commands::training::race_predictions(
+                        &client,
+                        output,
+                        from.as_deref(),
+                        to.as_deref(),
+                    )
+                    .await
                 }
                 TrainingCommands::EnduranceScore {
                     date,
