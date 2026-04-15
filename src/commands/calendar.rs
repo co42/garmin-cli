@@ -119,14 +119,15 @@ pub async fn list(
             (cur_y, cur_m) = next_month(cur_y, cur_m);
         }
 
-        // Filter to date range and deduplicate by id
+        // Filter to date range and deduplicate
+        // Key on (id, title) because adaptive workouts on the same day share an id
         let start_str = start.format("%Y-%m-%d").to_string();
         let end_str = end.format("%Y-%m-%d").to_string();
         let mut seen = std::collections::HashSet::new();
         let items: Vec<CalendarItem> = all_items
             .into_iter()
             .filter(|item| {
-                if !seen.insert(item.id) {
+                if !seen.insert((item.id, item.title.clone())) {
                     return false;
                 }
                 item.date
