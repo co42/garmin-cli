@@ -94,27 +94,27 @@ pub async fn list(
         let arr = v.as_array().map(|a| a.as_slice()).unwrap_or_default();
         let workouts: Vec<Workout> = arr.iter().map(workout_from_json).collect();
         if verbose {
-            print_workout_list_verbose(arr, &workouts);
+            // List endpoint doesn't return workoutSegments — fetch each workout individually
+            for workout in &workouts {
+                workout.print_human();
+                let detail: serde_json::Value = client
+                    .get_json(&format!("/workout-service/workout/{}", workout.id))
+                    .await?;
+                if let Some(segments) = detail["workoutSegments"].as_array() {
+                    for seg in segments {
+                        if let Some(steps) = seg["workoutSteps"].as_array() {
+                            print_steps(steps, 1);
+                        }
+                    }
+                }
+                println!();
+            }
+            println!("{} items", workouts.len());
         } else {
             output.print_list(&workouts, "Workouts");
         }
     }
     Ok(())
-}
-
-fn print_workout_list_verbose(raw: &[serde_json::Value], workouts: &[Workout]) {
-    for (item, workout) in raw.iter().zip(workouts.iter()) {
-        workout.print_human();
-        if let Some(segments) = item["workoutSegments"].as_array() {
-            for seg in segments {
-                if let Some(steps) = seg["workoutSteps"].as_array() {
-                    print_steps(steps, 1);
-                }
-            }
-        }
-        println!();
-    }
-    println!("{} items", workouts.len());
 }
 
 pub async fn get(client: &GarminClient, output: &Output, id: u64) -> Result<()> {
