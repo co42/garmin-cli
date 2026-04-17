@@ -102,6 +102,11 @@ enum Commands {
         #[command(subcommand)]
         command: WorkoutCommands,
     },
+    /// Garmin Coach (adaptive training plan)
+    Coach {
+        #[command(subcommand)]
+        command: CoachCommands,
+    },
     /// Courses (saved routes)
     Courses {
         #[command(subcommand)]
@@ -529,6 +534,26 @@ enum CalendarCommands {
 }
 
 #[derive(Subcommand)]
+enum CoachCommands {
+    /// List coach workouts
+    List {
+        /// Include alternate variants (different target types)
+        #[arg(long)]
+        all: bool,
+        /// Show step details for each workout
+        #[arg(long, short)]
+        verbose: bool,
+    },
+    /// Get a specific coach workout by UUID
+    Get {
+        /// Workout UUID
+        uuid: String,
+    },
+    /// Show training plan details
+    Plan,
+}
+
+#[derive(Subcommand)]
 enum WorkoutCommands {
     /// List saved workouts
     List {
@@ -538,6 +563,9 @@ enum WorkoutCommands {
         /// Start index for pagination
         #[arg(long, default_value = "0")]
         start: u32,
+        /// Show step details for each workout
+        #[arg(long, short)]
+        verbose: bool,
     },
     /// Get workout details
     Get {
@@ -986,9 +1014,11 @@ async fn run(command: Commands, output: &Output) -> std::result::Result<(), Erro
         Commands::Workouts { command } => {
             let client = GarminClient::new(require_auth()?)?;
             match command {
-                WorkoutCommands::List { limit, start } => {
-                    commands::workouts::list(&client, output, limit, start).await
-                }
+                WorkoutCommands::List {
+                    limit,
+                    start,
+                    verbose,
+                } => commands::workouts::list(&client, output, limit, start, verbose).await,
                 WorkoutCommands::Get { id } => commands::workouts::get(&client, output, id).await,
                 WorkoutCommands::Create { file } => {
                     commands::workouts::create(&client, output, &file).await
@@ -1012,6 +1042,17 @@ async fn run(command: Commands, output: &Output) -> std::result::Result<(), Erro
                     commands::workouts::template(output, kind);
                     Ok(())
                 }
+            }
+        }
+
+        Commands::Coach { command } => {
+            let client = GarminClient::new(require_auth()?)?;
+            match command {
+                CoachCommands::List { all, verbose } => {
+                    commands::coach::list(&client, output, all, verbose).await
+                }
+                CoachCommands::Get { uuid } => commands::coach::get(&client, output, &uuid).await,
+                CoachCommands::Plan => commands::coach::plan(&client, output).await,
             }
         }
 

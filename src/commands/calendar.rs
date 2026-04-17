@@ -12,6 +12,8 @@ pub struct CalendarItem {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workout_id: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub workout_uuid: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub date: Option<String>,
@@ -27,6 +29,7 @@ fn calendar_item_from_json(v: &serde_json::Value) -> CalendarItem {
     CalendarItem {
         id: v["id"].as_u64().unwrap_or(0),
         workout_id: v["workoutId"].as_u64(),
+        workout_uuid: v["workoutUuid"].as_str().map(Into::into),
         item_type: v["itemType"]
             .as_str()
             .or_else(|| v["calendarItemType"].as_str())
@@ -54,8 +57,17 @@ impl HumanReadable for CalendarItem {
     fn print_human(&self) {
         let title = self.title.as_deref().unwrap_or("\u{2014}");
         let date = self.date.as_deref().unwrap_or("");
-        let kind = self.activity_type.as_deref().unwrap_or(&self.item_type);
-        print!("{} {} [{}]", date.dimmed(), title.bold(), kind.cyan());
+        let ref_tag = if let Some(uuid) = &self.workout_uuid {
+            format!("[{} {}]", "coach".magenta(), uuid.dimmed())
+        } else if let Some(id) = self.workout_id {
+            format!("[{} {}]", "workout".cyan(), id.to_string().dimmed())
+        } else if self.item_type == "activity" {
+            format!("[{} {}]", "activity".cyan(), self.id.to_string().dimmed())
+        } else {
+            let kind = self.activity_type.as_deref().unwrap_or(&self.item_type);
+            format!("[{}]", kind.cyan())
+        };
+        print!("{} {} {ref_tag}", date.dimmed(), title.bold());
         if let Some(dist) = self.distance_meters {
             print!("  {:.2} km", dist / 1000.0);
         }

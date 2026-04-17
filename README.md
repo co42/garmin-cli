@@ -190,7 +190,7 @@ garmin badges list                     # Earned achievements
 ### Workouts
 
 ```bash
-garmin workouts list [--limit 20]
+garmin workouts list [--limit 20] [-v]
 garmin workouts get <ID>               # Summary + full step structure
 garmin workouts create --file workout.json
 garmin workouts update <ID> --file workout.json
@@ -199,9 +199,21 @@ garmin workouts delete <ID>
 garmin workouts template [--type interval|tempo|easy|long-run]
 ```
 
-`get` shows the full step structure in human mode (step types, targets, descriptions, repeat groups) and returns the raw API response in JSON mode. Templates include all required API IDs and description fields — they can be used directly with `create`.
+`get` shows the full step structure in human mode (step types, targets, descriptions, repeat groups) and returns the raw API response in JSON mode. `-v`/`--verbose` on `list` shows step details inline (same as `get` but for each workout). Templates include all required API IDs and description fields — they can be used directly with `create`.
 
-Pace targets use **m/s** (convert: `m/s = 1000 / sec_per_km`, e.g. 4:25/km → 3.774). HR targets use **BPM values**, not zone numbers — use `garmin training hr-zones` to get your boundaries.
+Pace targets use **m/s** (convert: `m/s = 1000 / sec_per_km`, e.g. 4:25/km → 3.774). Garmin Coach convention: `targetValueOne` = faster bound (higher m/s), `targetValueTwo` = slower bound (lower m/s). The watch normalizes regardless of order. HR targets use **BPM values**, not zone numbers — use `garmin training hr-zones` to get your boundaries.
+
+### Coach (Garmin Coach / FBT Adaptive)
+
+```bash
+garmin coach list [--all] [-v]         # Adaptive workouts (REQUIRED only by default)
+garmin coach get <UUID>                # Workout detail + step structure
+garmin coach plan                      # Active training plan metadata
+```
+
+Coach workouts use UUIDs (not numeric IDs). `list` shows only REQUIRED priority workouts by default — use `--all` to include alternates. `-v`/`--verbose` shows step details inline. `get` reuses the same step display as `workouts get`.
+
+Human output shows workout phrase (base, long run, anaerobic speed...), training effect (aerobic/anaerobic), and priority type.
 
 ### Calendar
 
@@ -210,6 +222,8 @@ garmin calendar [--year 2026] [--month 3]   # View a month
 garmin calendar --weeks 4                    # Next N weeks (spans months)
 garmin calendar delete <ID>                  # Remove a scheduled entry
 ```
+
+Human output tags each item by source: `[coach <UUID>]` for Garmin Coach workouts, `[workout <ID>]` for user-created workouts, `[activity <ID>]` for completed activities, or `[type]` for other items (events, goals).
 
 ### Gear
 

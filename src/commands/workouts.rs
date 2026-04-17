@@ -53,38 +53,68 @@ fn workout_from_json(v: &serde_json::Value) -> Workout {
 impl HumanReadable for Workout {
     fn print_human(&self) {
         let sport = self.sport_type.as_deref().unwrap_or("unknown");
-        println!("{} [{}]", self.name.bold(), sport.cyan(),);
-        println!("  ID: {}", self.id);
+        let date = self.created_date.as_deref().unwrap_or("");
+        // Single line: ID  date  Name [sport]  description  duration  distance
+        print!(
+            "{} {} {} [{}]",
+            self.id.to_string().dimmed(),
+            date.dimmed(),
+            self.name.bold(),
+            sport.cyan()
+        );
         if let Some(ref desc) = self.description
             && !desc.is_empty()
         {
-            println!("  {}", desc.dimmed());
+            print!("  {}", desc.dimmed());
         }
         if let Some(dur) = self.estimated_duration_seconds {
             let mins = (dur / 60.0).round() as u32;
-            println!("  Est. duration: {mins} min");
+            print!("  {mins} min");
         }
         if let Some(dist) = self.estimated_distance_meters {
-            println!("  Est. distance: {:.2} km", dist / 1000.0);
-        }
-        if let Some(ref date) = self.created_date {
-            println!("  Created: {date}");
+            print!("  {:.1} km", dist / 1000.0);
         }
         println!();
     }
 }
 
-pub async fn list(client: &GarminClient, output: &Output, limit: u32, start: u32) -> Result<()> {
+pub async fn list(
+    client: &GarminClient,
+    output: &Output,
+    limit: u32,
+    start: u32,
+    verbose: bool,
+) -> Result<()> {
     let path = format!("/workout-service/workouts?start={start}&limit={limit}");
     let v: serde_json::Value = client.get_json(&path).await?;
 
-    let workouts: Vec<Workout> = v
-        .as_array()
-        .map(|arr| arr.iter().map(workout_from_json).collect())
-        .unwrap_or_default();
-
-    output.print_list(&workouts, "Workouts");
+    if output.is_json() {
+        output.print_value(&v);
+    } else {
+        let arr = v.as_array().map(|a| a.as_slice()).unwrap_or_default();
+        let workouts: Vec<Workout> = arr.iter().map(workout_from_json).collect();
+        if verbose {
+            print_workout_list_verbose(arr, &workouts);
+        } else {
+            output.print_list(&workouts, "Workouts");
+        }
+    }
     Ok(())
+}
+
+fn print_workout_list_verbose(raw: &[serde_json::Value], workouts: &[Workout]) {
+    for (item, workout) in raw.iter().zip(workouts.iter()) {
+        workout.print_human();
+        if let Some(segments) = item["workoutSegments"].as_array() {
+            for seg in segments {
+                if let Some(steps) = seg["workoutSteps"].as_array() {
+                    print_steps(steps, 1);
+                }
+            }
+        }
+        println!();
+    }
+    println!("{} items", workouts.len());
 }
 
 pub async fn get(client: &GarminClient, output: &Output, id: u64) -> Result<()> {
@@ -108,7 +138,7 @@ pub async fn get(client: &GarminClient, output: &Output, id: u64) -> Result<()> 
     Ok(())
 }
 
-fn print_steps(steps: &[serde_json::Value], indent: usize) {
+pub fn print_steps(steps: &[serde_json::Value], indent: usize) {
     let pad = "  ".repeat(indent);
     for step in steps {
         let step_type = step["type"].as_str().unwrap_or("");
@@ -120,6 +150,7 @@ fn print_steps(steps: &[serde_json::Value], indent: usize) {
             }
         } else {
             let kind = step["stepType"]["stepTypeKey"].as_str().unwrap_or("?");
+            let exercise_name = step["exerciseName"].as_str();
             let desc = step["description"].as_str().unwrap_or("");
             let end_type = step["endCondition"]["conditionTypeKey"]
                 .as_str()
@@ -142,13 +173,18 @@ fn print_steps(steps: &[serde_json::Value], indent: usize) {
 
             let target_str = format_target(step);
 
-            let kind_colored = match kind {
-                "warmup" => "Warm Up".green().to_string(),
-                "cooldown" => "Cool Down".green().to_string(),
-                "interval" => "Run".yellow().bold().to_string(),
-                "recovery" => "Recover".cyan().to_string(),
-                "rest" => "Rest".dimmed().to_string(),
-                other => other.to_string(),
+            // Use exercise name when present (strength workouts), otherwise map step type
+            let kind_colored = if let Some(name) = exercise_name {
+                humanize_exercise(name).yellow().bold().to_string()
+            } else {
+                match kind {
+                    "warmup" => "Warm Up".green().to_string(),
+                    "cooldown" => "Cool Down".green().to_string(),
+                    "interval" => "Run".yellow().bold().to_string(),
+                    "recovery" => "Recover".cyan().to_string(),
+                    "rest" => "Rest".dimmed().to_string(),
+                    other => other.to_string(),
+                }
             };
 
             let mut line = format!("{pad}{kind_colored} - {end_str}");
@@ -163,6 +199,25 @@ fn print_steps(steps: &[serde_json::Value], indent: usize) {
     }
 }
 
+/// Convert SCREAMING_SNAKE_CASE exercise names to Title Case.
+/// e.g. "PLANK_UP_DOWNS" → "Plank Up Downs"
+fn humanize_exercise(name: &str) -> String {
+    name.split('_')
+        .map(|w| {
+            let mut chars = w.chars();
+            match chars.next() {
+                Some(c) => {
+                    let mut s = c.to_uppercase().to_string();
+                    s.extend(chars.map(|c| c.to_ascii_lowercase()));
+                    s
+                }
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 fn format_target(step: &serde_json::Value) -> String {
     let target_key = step["targetType"]["workoutTargetTypeKey"]
         .as_str()
@@ -172,22 +227,57 @@ fn format_target(step: &serde_json::Value) -> String {
 
     match target_key {
         "pace.zone" => {
-            // API stores pace as m/s; convert to min:sec/km for display
+            // API stores pace as m/s; convert to min:sec/km for display.
+            // Garmin Coach convention: targetValueOne = faster (higher m/s),
+            // targetValueTwo = slower (lower m/s). We normalize with min/max
+            // so display is correct regardless of input order.
             let fmt_pace = |speed_ms: f64| -> String {
                 let s = (1000.0 / speed_ms).round() as u64;
                 format!("{}:{:02}/km", s / 60, s % 60)
             };
             match (v1, v2) {
-                (Some(a), Some(b)) => format!("{}-{}", fmt_pace(b), fmt_pace(a)),
+                (Some(a), Some(b)) => {
+                    let (fast, slow) = if a > b { (a, b) } else { (b, a) };
+                    format!("{}-{}", fmt_pace(fast), fmt_pace(slow))
+                }
                 _ => "pace target".into(),
             }
         }
         "heart.rate.zone" => match (v1, v2) {
             (Some(a), Some(b)) if a == b => format!("{} bpm", a as u32),
-            (Some(a), Some(b)) => format!("{}-{} bpm", a as u32, b as u32),
+            (Some(a), Some(b)) => {
+                let (lo, hi) = if a < b { (a, b) } else { (b, a) };
+                format!("{}-{} bpm", lo as u32, hi as u32)
+            }
             _ => "HR target".into(),
         },
-        "" => String::new(),
+        "instruction" => match v1.map(|v| v as u32) {
+            // Known Garmin Coach instruction IDs (not publicly documented;
+            // sourced from observed API responses and community projects).
+            Some(0) => "no instruction".into(),
+            Some(1) => "easy".into(),
+            Some(2) => "moderate".into(),
+            Some(3) => "hard".into(),
+            Some(4) => "very hard".into(),
+            Some(5) => "max effort".into(),
+            Some(6) => "warm up".into(),
+            Some(7) => "cool down".into(),
+            Some(8) => "recovery".into(),
+            Some(9) => "tempo".into(),
+            Some(10) => "steady".into(),
+            Some(11) => "race pace".into(),
+            Some(12) => "all out".into(),
+            Some(n) => format!("instruction({n})"),
+            None => String::new(),
+        },
+        "power.zone" => match (v1, v2) {
+            (Some(a), Some(b)) => {
+                let (lo, hi) = if a < b { (a, b) } else { (b, a) };
+                format!("{}-{} W", lo as u32, hi as u32)
+            }
+            _ => "power target".into(),
+        },
+        "no.target" | "" => String::new(),
         other => other.to_string(),
     }
 }
@@ -256,7 +346,9 @@ pub async fn delete(client: &GarminClient, output: &Output, id: u64) -> Result<(
 //   targetTypeId:   4=heart.rate.zone, 6=pace.zone
 //   Pace targets:   m/s (e.g. 3.774 = 4:25/km, 3.509 = 4:45/km).
 //                   Convert: m/s = 1000 / seconds_per_km
-//                   targetValueOne = slower bound (lower m/s), targetValueTwo = faster bound
+//                   Garmin Coach convention: targetValueOne = faster bound (higher m/s),
+//                   targetValueTwo = slower bound (lower m/s). The watch normalizes
+//                   regardless of order, but we follow the Coach convention.
 //   HR targets:     BPM values (e.g. targetValueOne=120, targetValueTwo=150)
 //                   Zone numbers (1-5) do NOT work - the watch interprets them
 //                   as literal BPM. Always use actual BPM values.
@@ -289,7 +381,7 @@ pub fn template(output: &Output, kind: &str) {
                                 "endCondition": { "conditionTypeId": 3, "conditionTypeKey": "distance" },
                                 "endConditionValue": 400,
                                 "targetType": { "workoutTargetTypeId": 6, "workoutTargetTypeKey": "pace.zone" },
-                                "targetValueOne": 3.922, "targetValueTwo": 4.444,
+                                "targetValueOne": 4.444, "targetValueTwo": 3.922,
                                 "description": "Z5 VO2max (~3:45-4:15/km)"
                             },
                             {
@@ -331,7 +423,7 @@ pub fn template(output: &Output, kind: &str) {
                         "endCondition": { "conditionTypeId": 2, "conditionTypeKey": "time" },
                         "endConditionValue": 1200,
                         "targetType": { "workoutTargetTypeId": 6, "workoutTargetTypeKey": "pace.zone" },
-                        "targetValueOne": 3.509, "targetValueTwo": 3.774,
+                        "targetValueOne": 3.774, "targetValueTwo": 3.509,
                         "description": "Z4 Threshold (~4:25-4:45/km)"
                     },
                     {
