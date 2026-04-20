@@ -1,6 +1,6 @@
 use crate::client::GarminClient;
 use crate::error::Result;
-use crate::output::{HumanReadable, Output};
+use crate::output::{HumanReadable, LABEL_WIDTH, Output};
 use colored::Colorize;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -177,30 +177,21 @@ fn record_from_json(v: &serde_json::Value, types: &HashMap<i64, RecordType>) -> 
 
 impl HumanReadable for PersonalRecord {
     fn print_human(&self) {
-        let label = &self.record_type;
+        println!("{}", self.record_type.bold());
         let val = self.formatted_value.as_deref().unwrap_or("\u{2014}");
-
-        // Line 1: label + value (+ pace if available)
-        let pace_str = self
-            .pace_min_km
-            .as_ref()
-            .map(|p| format!(" ({})", p))
-            .unwrap_or_default();
-        println!("  {:<25} {}{}", label, val.bold(), pace_str);
-
-        // Line 2: date, activity name, activity ID
-        let mut parts: Vec<String> = Vec::new();
+        println!("  {:<LABEL_WIDTH$}{}", "Value:", val.cyan());
+        if let Some(ref pace) = self.pace_min_km {
+            println!("  {:<LABEL_WIDTH$}{pace}", "Pace:");
+        }
         if let Some(ref d) = self.date {
-            parts.push(format!("{}", d.dimmed()));
+            println!("  {:<LABEL_WIDTH$}{d}", "Date:");
         }
         if let Some(ref n) = self.activity_name {
-            parts.push(n.clone());
-        }
-        if let Some(id) = self.activity_id {
-            parts.push(format!("{}", format!("#{id}").dimmed()));
-        }
-        if !parts.is_empty() {
-            println!("  {:<25} {}", "", parts.join(" \u{b7} "));
+            let id = self
+                .activity_id
+                .map(|i| format!(" (#{i})"))
+                .unwrap_or_default();
+            println!("  {:<LABEL_WIDTH$}{n}{id}", "Activity:");
         }
     }
 }

@@ -1,6 +1,6 @@
 use crate::client::GarminClient;
 use crate::error::Result;
-use crate::output::{HumanReadable, Output};
+use crate::output::{HumanReadable, LABEL_WIDTH, Output};
 use colored::Colorize;
 use serde::Serialize;
 
@@ -129,90 +129,64 @@ pub struct ActivitySummary {
 
 impl HumanReadable for ActivitySummary {
     fn print_human(&self) {
-        let duration_min = self.duration_seconds / 60.0;
+        println!("{}  {}", self.start_time.bold(), self.name);
+        println!("  {:<LABEL_WIDTH$}{}", "ID:", self.id.to_string().dimmed());
+        println!("  {:<LABEL_WIDTH$}{}", "Type:", self.activity_type.cyan());
         let dist = self
             .distance_meters
             .map(|d| format!("{:.2} km", d / 1000.0))
             .unwrap_or_else(|| "\u{2014}".into());
-
+        println!("  {:<LABEL_WIDTH$}{dist}", "Distance:");
         println!(
-            "{} {} [{}]",
-            self.start_time.dimmed(),
-            self.name.bold(),
-            self.activity_type.cyan()
+            "  {:<LABEL_WIDTH$}{:.0} min",
+            "Duration:",
+            self.duration_seconds / 60.0
         );
-        println!(
-            "  ID: {}  Duration: {:.0}min  Distance: {}",
-            self.id, duration_min, dist
-        );
-        if let Some(hr) = self.avg_hr {
-            print!("  Avg HR: {:.0}", hr);
-            if let Some(max) = self.max_hr {
-                print!("  Max HR: {:.0}", max);
-            }
-            println!();
-        }
         if let Some(ref pace) = self.pace_min_km {
-            println!("  Pace: {pace}");
+            println!("  {:<LABEL_WIDTH$}{pace}", "Pace:");
         }
-
-        // Training Effect / Load / VO2max line
+        if let Some(hr) = self.avg_hr {
+            let max = self
+                .max_hr
+                .map(|m| format!(" (max {m:.0})"))
+                .unwrap_or_default();
+            println!("  {:<LABEL_WIDTH$}{hr:.0} bpm{max}", "Avg HR:");
+        }
+        if let (Some(aero), Some(anaero)) =
+            (self.aerobic_training_effect, self.anaerobic_training_effect)
         {
-            let mut parts = Vec::new();
-            if let (Some(aero), Some(anaero)) =
-                (self.aerobic_training_effect, self.anaerobic_training_effect)
-            {
-                parts.push(format!("TE: {aero:.1} aero / {anaero:.1} anaero"));
-            } else if let Some(aero) = self.aerobic_training_effect {
-                parts.push(format!("TE: {aero:.1} aero"));
-            }
-            if let Some(load) = self.activity_training_load {
-                parts.push(format!("Load: {load:.0}"));
-            }
-            if let Some(vo2) = self.vo2max_value {
-                parts.push(format!("VO2max: {vo2:.0}"));
-            }
-            if !parts.is_empty() {
-                println!("  {}", parts.join("  "));
-            }
+            println!(
+                "  {:<LABEL_WIDTH$}{aero:.1} aero / {anaero:.1} anaero",
+                "TE:"
+            );
+        } else if let Some(aero) = self.aerobic_training_effect {
+            println!("  {:<LABEL_WIDTH$}{aero:.1} aero", "TE:");
         }
-
-        // Elevation / Power line
-        {
-            let mut parts = Vec::new();
-            if let Some(gain) = self.elevation_gain {
-                let loss_str = self
-                    .elevation_loss
-                    .map(|l| format!(" / -{l:.0}m"))
-                    .unwrap_or_default();
-                parts.push(format!("Elev: +{gain:.0}m{loss_str}"));
-            }
-            if let Some(pwr) = self.avg_power {
-                parts.push(format!("Power: {pwr:.0}W"));
-            }
-            if !parts.is_empty() {
-                println!("  {}", parts.join("  "));
-            }
+        if let Some(load) = self.activity_training_load {
+            println!("  {:<LABEL_WIDTH$}{load:.0}", "Load:");
         }
-
-        // Running dynamics line
-        {
-            let mut parts = Vec::new();
-            if let Some(cad) = self.avg_running_cadence {
-                parts.push(format!("Cadence: {cad:.0} spm"));
-            }
-            if let Some(gct) = self.avg_ground_contact_time {
-                parts.push(format!("GCT: {gct:.0}ms"));
-            }
-            if let Some(stride) = self.avg_stride_length {
-                parts.push(format!("Stride: {stride:.0}cm"));
-            }
-            if !parts.is_empty() {
-                println!("  {}", parts.join("  "));
-            }
+        if let Some(vo2) = self.vo2max_value {
+            println!("  {:<LABEL_WIDTH$}{vo2:.0}", "VO2max:");
         }
-
-        println!();
+        if let Some(gain) = self.elevation_gain {
+            let loss_str = self
+                .elevation_loss
+                .map(|l| format!(" / -{l:.0}m"))
+                .unwrap_or_default();
+            println!("  {:<LABEL_WIDTH$}+{gain:.0}m{loss_str}", "Elevation:");
+        }
+        if let Some(pwr) = self.avg_power {
+            println!("  {:<LABEL_WIDTH$}{pwr:.0} W", "Power:");
+        }
+        if let Some(cad) = self.avg_running_cadence {
+            println!("  {:<LABEL_WIDTH$}{cad:.0} spm", "Cadence:");
+        }
+        if let Some(gct) = self.avg_ground_contact_time {
+            println!("  {:<LABEL_WIDTH$}{gct:.0} ms", "GCT:");
+        }
+        if let Some(stride) = self.avg_stride_length {
+            println!("  {:<LABEL_WIDTH$}{stride:.0} cm", "Stride:");
+        }
     }
 }
 
@@ -441,10 +415,7 @@ pub async fn list(
         summaries.truncate(limit as usize);
     }
 
-    output.print_list(
-        &summaries,
-        &format!("Activities ({} results)", summaries.len()),
-    );
+    output.print_list(&summaries, "Activities");
     Ok(())
 }
 
@@ -539,7 +510,7 @@ impl HumanReadable for HrZone {
         let hr_label = self
             .min_hr
             .map(|h| format!("{h}+ bpm"))
-            .unwrap_or_else(|| "-".into());
+            .unwrap_or_else(|| "\u{2013}".into());
         let time = self
             .seconds_in_zone
             .map(|s| {
@@ -547,13 +518,9 @@ impl HumanReadable for HrZone {
                 let sec = (s % 60.0).round() as u32;
                 format!("{m}:{sec:02}")
             })
-            .unwrap_or_else(|| "-".into());
-        println!(
-            "  Zone {}  {:>10}  {}",
-            format!("{}", self.zone).cyan(),
-            hr_label,
-            time.dimmed(),
-        );
+            .unwrap_or_else(|| "\u{2013}".into());
+        let label = format!("Zone {}", self.zone);
+        println!("  {:<LABEL_WIDTH$}{hr_label}  {}", label, time.dimmed());
     }
 }
 
@@ -561,7 +528,7 @@ pub async fn hr_zones(client: &GarminClient, output: &Output, id: u64) -> Result
     let path = format!("/activity-service/activity/{id}/hrTimeInZones");
     let v: serde_json::Value = client.get_json(&path).await?;
     let zones = hr_zones_from_json(&v);
-    output.print_list(&zones, "HR Zones");
+    output.print_table(&zones, "HR Zones");
     Ok(())
 }
 
@@ -644,7 +611,7 @@ impl HumanReadable for ActivitySplit {
         let dist = self
             .distance_meters
             .map(|d| format!("{:.0}m", d))
-            .unwrap_or_else(|| "-".into());
+            .unwrap_or_else(|| "\u{2013}".into());
         let dur = self
             .duration_seconds
             .map(|s| {
@@ -652,20 +619,21 @@ impl HumanReadable for ActivitySplit {
                 let sec = (s % 60.0).round() as u32;
                 format!("{m}:{sec:02}")
             })
-            .unwrap_or_else(|| "-".into());
-        let pace = self.pace.as_deref().unwrap_or("-");
+            .unwrap_or_else(|| "\u{2013}".into());
+        let pace = self.pace.as_deref().unwrap_or("\u{2013}");
         let hr = self
             .avg_hr
             .map(|h| format!("{:.0} bpm", h))
-            .unwrap_or_else(|| "-".into());
+            .unwrap_or_else(|| "\u{2013}".into());
         let elev = match (self.elevation_gain, self.elevation_loss) {
             (Some(g), Some(l)) => format!("+{:.0}/-{:.0}m", g, l),
             (Some(g), None) => format!("+{:.0}m", g),
             _ => String::new(),
         };
+        let label = format!("#{}", self.split);
         println!(
-            "  {:>3}  {:>7}  {:>6}  {:>10}  {:>8}  {}",
-            format!("#{}", self.split).cyan(),
+            "  {:<6}{:>7}  {:>6}  {:>10}  {:>8}  {}",
+            label.cyan(),
             dist,
             dur,
             pace,
@@ -679,7 +647,7 @@ pub async fn splits(client: &GarminClient, output: &Output, id: u64) -> Result<(
     let path = format!("/activity-service/activity/{id}/splits");
     let v: serde_json::Value = client.get_json(&path).await?;
     let items = splits_from_json(&v);
-    output.print_list(&items, "Splits");
+    output.print_table(&items, "Splits");
     Ok(())
 }
 
@@ -744,32 +712,30 @@ fn weather_from_json(v: &serde_json::Value) -> ActivityWeather {
 impl HumanReadable for ActivityWeather {
     fn print_human(&self) {
         println!("{}", "Weather".bold());
+        println!("{}", "\u{2500}".repeat(40).dimmed());
         if let Some(temp) = self.temperature_celsius {
             let feels = self
                 .feels_like_celsius
                 .map(|f| format!(" (feels like {f:.0}\u{b0}C)"))
                 .unwrap_or_default();
             println!(
-                "  {:<14}{:.0}\u{b0}C{}",
-                "Temperature:".dimmed(),
-                temp,
-                feels
+                "  {:<LABEL_WIDTH$}{:.0}\u{b0}C{feels}",
+                "Temperature:", temp
             );
         }
         if let Some(hum) = self.humidity_percent {
-            println!("  {:<14}{:.0}%", "Humidity:".dimmed(), hum);
+            println!("  {:<LABEL_WIDTH$}{:.0}%", "Humidity:", hum);
         }
         if let Some(wind) = self.wind_speed_kmh {
             let dir = self.wind_direction_compass.as_deref().unwrap_or("");
-            println!("  {:<14}{:.0} km/h {}", "Wind:".dimmed(), wind, dir);
+            println!("  {:<LABEL_WIDTH$}{:.0} km/h {dir}", "Wind:", wind);
         }
         if let Some(ref desc) = self.weather_description {
-            println!("  {:<14}{}", "Conditions:".dimmed(), desc);
+            println!("  {:<LABEL_WIDTH$}{desc}", "Conditions:");
         }
         if let Some(ref station) = self.station_name {
-            println!("  {:<14}{}", "Station:".dimmed(), station);
+            println!("  {:<LABEL_WIDTH$}{station}", "Station:");
         }
-        println!();
     }
 }
 
@@ -836,7 +802,7 @@ impl HumanReadable for ActivityLap {
         let dist = self
             .distance_meters
             .map(|d| format!("{:.0}m", d))
-            .unwrap_or_else(|| "\u{2014}".into());
+            .unwrap_or_else(|| "\u{2013}".into());
         let dur = self
             .duration_seconds
             .map(|s| {
@@ -844,15 +810,16 @@ impl HumanReadable for ActivityLap {
                 let sec = (s % 60.0).round() as u32;
                 format!("{m}:{sec:02}")
             })
-            .unwrap_or_else(|| "\u{2014}".into());
-        let pace = self.pace.as_deref().unwrap_or("\u{2014}");
+            .unwrap_or_else(|| "\u{2013}".into());
+        let pace = self.pace.as_deref().unwrap_or("\u{2013}");
         let hr = self
             .avg_hr
             .map(|h| format!("{:.0} bpm", h))
-            .unwrap_or_else(|| "\u{2014}".into());
+            .unwrap_or_else(|| "\u{2013}".into());
+        let label = format!("#{}", self.lap_number);
         println!(
-            "  {:>3}  {:>7}  {:>6}  {:>10}  {}",
-            format!("#{}", self.lap_number).cyan(),
+            "  {:<6}{:>7}  {:>6}  {:>10}  {}",
+            label.cyan(),
             dist,
             dur,
             pace,
@@ -865,7 +832,7 @@ pub async fn laps(client: &GarminClient, output: &Output, id: u64) -> Result<()>
     let path = format!("/activity-service/activity/{id}/laps");
     let v: serde_json::Value = client.get_json(&path).await?;
     let items = laps_from_json(&v);
-    output.print_list(&items, "Laps");
+    output.print_table(&items, "Laps");
     Ok(())
 }
 
@@ -927,8 +894,8 @@ fn power_zones_from_json(v: &serde_json::Value) -> Vec<PowerZone> {
 impl HumanReadable for PowerZone {
     fn print_human(&self) {
         let range = match (self.min_watts, self.max_watts) {
-            (Some(lo), Some(hi)) => format!("{:.0}–{:.0}W", lo, hi),
-            (Some(lo), None) => format!("{:.0}W+", lo),
+            (Some(lo), Some(hi)) => format!("{:.0}\u{2013}{:.0} W", lo, hi),
+            (Some(lo), None) => format!("{:.0} W+", lo),
             _ => "\u{2014}".into(),
         };
         let time = self
@@ -939,12 +906,8 @@ impl HumanReadable for PowerZone {
                 format!("{m}:{sec:02}")
             })
             .unwrap_or_else(|| "\u{2014}".into());
-        println!(
-            "  Zone {:>1}  {:>14}  {}",
-            format!("{}", self.zone).cyan(),
-            range,
-            time.dimmed(),
-        );
+        let label = format!("Zone {}", self.zone);
+        println!("  {:<LABEL_WIDTH$}{range}  {}", label, time.dimmed());
     }
 }
 
@@ -952,7 +915,7 @@ pub async fn power_zones(client: &GarminClient, output: &Output, id: u64) -> Res
     let path = format!("/activity-service/activity/{id}/powerTimeInZones");
     let v: serde_json::Value = client.get_json(&path).await?;
     let zones = power_zones_from_json(&v);
-    output.print_list(&zones, "Power Zones");
+    output.print_table(&zones, "Power Zones");
     Ok(())
 }
 

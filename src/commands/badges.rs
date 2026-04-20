@@ -1,6 +1,6 @@
 use crate::client::GarminClient;
 use crate::error::Result;
-use crate::output::{HumanReadable, Output};
+use crate::output::{HumanReadable, LABEL_WIDTH, Output};
 use colored::Colorize;
 use serde::Serialize;
 
@@ -42,24 +42,23 @@ fn badge_from_json(v: &serde_json::Value) -> Badge {
 
 impl HumanReadable for Badge {
     fn print_human(&self) {
-        let earned = self.earned_date.as_deref().unwrap_or("not earned");
         let count_str = self
             .earned_count
             .filter(|&c| c > 1)
             .map(|c| format!(" x{c}"))
             .unwrap_or_default();
-        println!("{}{} ({})", self.name.bold(), count_str, earned.dimmed(),);
-        let mut details = Vec::new();
+        println!("{}{count_str}", self.name.bold());
+        if let Some(ref d) = self.earned_date {
+            let short = &d[..d.len().min(10)];
+            println!("  {:<LABEL_WIDTH$}{short}", "Earned:");
+        }
         if let Some(pts) = self.points {
-            details.push(format!("{pts} pts"));
+            println!("  {:<LABEL_WIDTH$}{pts}", "Points:");
         }
         if let (Some(prog), Some(target)) = (self.progress, self.target)
             && target > 0.0
         {
-            details.push(format!("{:.0}/{:.0}", prog, target));
-        }
-        if !details.is_empty() {
-            println!("  {}", details.join("  ").dimmed());
+            println!("  {:<LABEL_WIDTH$}{:.0} / {:.0}", "Progress:", prog, target);
         }
     }
 }

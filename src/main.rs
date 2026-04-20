@@ -275,8 +275,14 @@ enum HealthCommands {
     },
     /// Body battery
     BodyBattery {
-        #[arg(long)]
+        #[arg(long, group = "date_selector")]
         date: Option<String>,
+        #[arg(long)]
+        days: Option<u32>,
+        #[arg(long, group = "date_selector")]
+        from: Option<String>,
+        #[arg(long, requires = "from")]
+        to: Option<String>,
     },
     /// Heart rate variability
     Hrv {
@@ -324,13 +330,25 @@ enum HealthCommands {
     },
     /// Blood oxygen (SpO2)
     Spo2 {
-        #[arg(long)]
+        #[arg(long, group = "date_selector")]
         date: Option<String>,
+        #[arg(long)]
+        days: Option<u32>,
+        #[arg(long, group = "date_selector")]
+        from: Option<String>,
+        #[arg(long, requires = "from")]
+        to: Option<String>,
     },
     /// Respiration rate
     Respiration {
-        #[arg(long)]
+        #[arg(long, group = "date_selector")]
         date: Option<String>,
+        #[arg(long)]
+        days: Option<u32>,
+        #[arg(long, group = "date_selector")]
+        from: Option<String>,
+        #[arg(long, requires = "from")]
+        to: Option<String>,
     },
     /// Intensity minutes
     IntensityMinutes {
@@ -383,7 +401,11 @@ enum TrainingCommands {
     },
     /// Race predictions (5K, 10K, half, marathon)
     RacePredictions {
+        #[arg(long, group = "date_selector")]
+        date: Option<String>,
         #[arg(long)]
+        days: Option<u32>,
+        #[arg(long, group = "date_selector")]
         from: Option<String>,
         #[arg(long, requires = "from")]
         to: Option<String>,
@@ -412,11 +434,26 @@ enum TrainingCommands {
     },
     /// Fitness age
     FitnessAge {
-        #[arg(long)]
+        #[arg(long, group = "date_selector")]
         date: Option<String>,
+        #[arg(long)]
+        days: Option<u32>,
+        #[arg(long, group = "date_selector")]
+        from: Option<String>,
+        #[arg(long, requires = "from")]
+        to: Option<String>,
     },
     /// Lactate threshold (speed and HR)
-    LactateThreshold,
+    LactateThreshold {
+        #[arg(long, group = "date_selector")]
+        date: Option<String>,
+        #[arg(long)]
+        days: Option<u32>,
+        #[arg(long, group = "date_selector")]
+        from: Option<String>,
+        #[arg(long, requires = "from")]
+        to: Option<String>,
+    },
     /// Heart rate zones (from most recent running activity)
     #[command(alias = "zones")]
     HrZones,
@@ -823,8 +860,14 @@ async fn run(command: Commands, output: &Output) -> std::result::Result<(), Erro
                     let (date, days) = resolve_date_range(date, days, from, to)?;
                     commands::health::heart_rate(&client, output, date.as_deref(), days).await
                 }
-                HealthCommands::BodyBattery { date } => {
-                    commands::health::body_battery(&client, output, date.as_deref()).await
+                HealthCommands::BodyBattery {
+                    date,
+                    days,
+                    from,
+                    to,
+                } => {
+                    let (date, days) = resolve_date_range(date, days, from, to)?;
+                    commands::health::body_battery(&client, output, date.as_deref(), days).await
                 }
                 HealthCommands::Hrv {
                     date,
@@ -862,11 +905,23 @@ async fn run(command: Commands, output: &Output) -> std::result::Result<(), Erro
                     let (date, days) = resolve_date_range(date, days, from, to)?;
                     commands::health::hydration(&client, output, date.as_deref(), days).await
                 }
-                HealthCommands::Spo2 { date } => {
-                    commands::health::spo2(&client, output, date.as_deref()).await
+                HealthCommands::Spo2 {
+                    date,
+                    days,
+                    from,
+                    to,
+                } => {
+                    let (date, days) = resolve_date_range(date, days, from, to)?;
+                    commands::health::spo2(&client, output, date.as_deref(), days).await
                 }
-                HealthCommands::Respiration { date } => {
-                    commands::health::respiration(&client, output, date.as_deref()).await
+                HealthCommands::Respiration {
+                    date,
+                    days,
+                    from,
+                    to,
+                } => {
+                    let (date, days) = resolve_date_range(date, days, from, to)?;
+                    commands::health::respiration(&client, output, date.as_deref(), days).await
                 }
                 HealthCommands::IntensityMinutes {
                     date,
@@ -911,14 +966,15 @@ async fn run(command: Commands, output: &Output) -> std::result::Result<(), Erro
                     let (date, days) = resolve_date_range(date, days, from, to)?;
                     commands::training::scores(&client, output, date.as_deref(), days).await
                 }
-                TrainingCommands::RacePredictions { from, to } => {
-                    commands::training::race_predictions(
-                        &client,
-                        output,
-                        from.as_deref(),
-                        to.as_deref(),
-                    )
-                    .await
+                TrainingCommands::RacePredictions {
+                    date,
+                    days,
+                    from,
+                    to,
+                } => {
+                    let (date, days) = resolve_date_range(date, days, from, to)?;
+                    commands::training::race_predictions(&client, output, date.as_deref(), days)
+                        .await
                 }
                 TrainingCommands::EnduranceScore {
                     date,
@@ -939,11 +995,24 @@ async fn run(command: Commands, output: &Output) -> std::result::Result<(), Erro
                     let (date, days) = resolve_date_range(date, days, from, to)?;
                     commands::training::hill_score(&client, output, date.as_deref(), days).await
                 }
-                TrainingCommands::FitnessAge { date } => {
-                    commands::training::fitness_age(&client, output, date.as_deref()).await
+                TrainingCommands::FitnessAge {
+                    date,
+                    days,
+                    from,
+                    to,
+                } => {
+                    let (date, days) = resolve_date_range(date, days, from, to)?;
+                    commands::training::fitness_age(&client, output, date.as_deref(), days).await
                 }
-                TrainingCommands::LactateThreshold => {
-                    commands::training::lactate_threshold(&client, output).await
+                TrainingCommands::LactateThreshold {
+                    date,
+                    days,
+                    from,
+                    to,
+                } => {
+                    let (date, days) = resolve_date_range(date, days, from, to)?;
+                    commands::training::lactate_threshold(&client, output, date.as_deref(), days)
+                        .await
                 }
                 TrainingCommands::HrZones => commands::training::zones(&client, output).await,
             }

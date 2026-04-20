@@ -1,6 +1,6 @@
 use crate::client::GarminClient;
 use crate::error::Result;
-use crate::output::{HumanReadable, Output};
+use crate::output::{HumanReadable, LABEL_WIDTH, Output};
 use colored::Colorize;
 use serde::Serialize;
 
@@ -29,44 +29,43 @@ pub struct DailySummary {
 
 impl HumanReadable for DailySummary {
     fn print_human(&self) {
-        println!("{}  {}", self.date.bold(), "Daily Summary".dimmed());
+        println!("{}", self.date.bold());
         if let Some(v) = self.total_steps {
-            println!("  {:<16}{}", "Steps:", v.to_string().cyan());
+            println!("  {:<LABEL_WIDTH$}{}", "Steps:", v.to_string().cyan());
         }
         if let Some(v) = self.total_distance_meters {
-            println!("  {:<16}{:.1} km", "Distance:", v / 1000.0);
+            println!("  {:<LABEL_WIDTH$}{:.1} km", "Distance:", v / 1000.0);
         }
         if let Some(v) = self.active_calories {
-            println!("  {:<16}{:.0}", "Active cal:", v);
+            println!("  {:<LABEL_WIDTH$}{:.0}", "Active cal:", v);
         }
         if let Some(v) = self.total_calories {
-            println!("  {:<16}{:.0}", "Total cal:", v);
+            println!("  {:<LABEL_WIDTH$}{:.0}", "Total cal:", v);
         }
         if let Some(v) = self.resting_heart_rate {
-            println!("  {:<16}{} bpm", "Resting HR:", v);
+            println!("  {:<LABEL_WIDTH$}{} bpm", "Resting HR:", v);
         }
         if let Some(v) = self.avg_stress {
             let max_str = self
                 .max_stress
                 .map(|m| format!("  Max: {m}"))
                 .unwrap_or_default();
-            println!("  {:<16}{:.0}{}", "Stress:", v, max_str);
+            println!("  {:<LABEL_WIDTH$}{:.0}{}", "Stress:", v, max_str);
         }
         if let (Some(lo), Some(hi)) = (self.body_battery_low, self.body_battery_high) {
-            println!("  {:<16}{lo}\u{2013}{hi}", "Body battery:");
+            println!("  {:<LABEL_WIDTH$}{lo}\u{2013}{hi}", "Body battery:");
         }
         if let Some(v) = self.sleep_seconds {
             let h = v / 3600;
             let m = (v % 3600) / 60;
-            println!("  {:<16}{h}h {m:02}m", "Sleep:");
+            println!("  {:<LABEL_WIDTH$}{h}h {m:02}m", "Sleep:");
         }
         if let Some(v) = self.floors_ascended {
-            println!("  {:<16}{v}", "Floors up:");
+            println!("  {:<LABEL_WIDTH$}{v}", "Floors up:");
         }
         if let Some(v) = self.intensity_minutes {
-            println!("  {:<16}{v}", "Intensity min:");
+            println!("  {:<LABEL_WIDTH$}{v}", "Intensity min:");
         }
-        println!();
     }
 }
 
@@ -117,10 +116,6 @@ pub async fn summary(
     }
 
     summaries.reverse();
-    if summaries.len() == 1 {
-        output.print(&summaries[0]);
-    } else {
-        output.print_list(&summaries, "Daily Summary");
-    }
+    output.print_list(&summaries, "Daily Summary");
     Ok(())
 }

@@ -1,6 +1,6 @@
 use crate::client::GarminClient;
 use crate::error::Result;
-use crate::output::{HumanReadable, Output};
+use crate::output::{HumanReadable, LABEL_WIDTH, Output};
 use colored::Colorize;
 use serde::Serialize;
 
@@ -25,17 +25,16 @@ impl HumanReadable for Device {
                 self.device_type.dimmed()
             );
         }
-        println!("  {:<14}{}", "ID:", self.id);
+        println!("  {:<LABEL_WIDTH$}{}", "ID:", self.id);
         if let Some(ref sn) = self.serial_number {
-            println!("  {:<14}{sn}", "Serial:");
+            println!("  {:<LABEL_WIDTH$}{sn}", "Serial:");
         }
         if let Some(ref fw) = self.firmware_version {
-            println!("  {:<14}{fw}", "Firmware:");
+            println!("  {:<LABEL_WIDTH$}{fw}", "Firmware:");
         }
         if let Some(ref sync) = self.last_sync {
-            println!("  {:<14}{sync}", "Last sync:");
+            println!("  {:<LABEL_WIDTH$}{sync}", "Last sync:");
         }
-        println!();
     }
 }
 

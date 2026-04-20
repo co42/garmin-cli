@@ -1,6 +1,6 @@
 use crate::client::GarminClient;
 use crate::error::Result;
-use crate::output::{HumanReadable, Output};
+use crate::output::{HumanReadable, LABEL_WIDTH, Output};
 use colored::Colorize;
 use serde::Serialize;
 
@@ -294,7 +294,6 @@ fn format_duration(seconds: f64) -> String {
 
 impl HumanReadable for Course {
     fn print_human(&self) {
-        let kind = self.activity_type.as_deref().unwrap_or("unknown");
         let mut tags = String::new();
         if self.favorite == Some(true) {
             tags.push_str(" *");
@@ -302,30 +301,37 @@ impl HumanReadable for Course {
         if self.public == Some(true) {
             tags.push_str(" (public)");
         }
-        println!("{}{} [{}]", self.name.bold(), tags, kind.cyan());
-        println!("  ID: {}", self.id);
+        println!("{}{}", self.name.bold(), tags);
+        println!("  {:<LABEL_WIDTH$}{}", "ID:", self.id);
+        if let Some(ref kind) = self.activity_type {
+            println!("  {:<LABEL_WIDTH$}{}", "Type:", kind.cyan());
+        }
         if let Some(ref desc) = self.description {
-            println!("  Description: {desc}");
+            println!("  {:<LABEL_WIDTH$}{desc}", "Description:");
         }
         if let Some(dist) = self.distance_meters {
             let duration_str = self
                 .elapsed_seconds
                 .map(|s| format!(" in {}", format_duration(s)))
                 .unwrap_or_default();
-            println!("  Distance: {:.2} km{duration_str}", dist / 1000.0);
+            println!(
+                "  {:<LABEL_WIDTH$}{:.2} km{duration_str}",
+                "Distance:",
+                dist / 1000.0
+            );
         }
         if let Some(speed) = self.speed_meters_per_second {
-            println!("  Speed: {:.2} km/h", speed * 3.6);
+            println!("  {:<LABEL_WIDTH$}{:.2} km/h", "Speed:", speed * 3.6);
         }
         if let Some(gain) = self.elevation_gain_meters {
             let loss_str = self
                 .elevation_loss_meters
                 .map(|l| format!(" / -{l:.0}m"))
                 .unwrap_or_default();
-            println!("  Elevation: +{gain:.0}m{loss_str}");
+            println!("  {:<LABEL_WIDTH$}+{gain:.0}m{loss_str}", "Elevation:");
         }
         if let Some(ref source) = self.elevation_source {
-            println!("  Elevation source: {source}");
+            println!("  {:<LABEL_WIDTH$}{source}", "Elev source:");
         }
         if let Some(ref date) = self.created_date {
             let update_str = self
@@ -333,7 +339,7 @@ impl HumanReadable for Course {
                 .as_ref()
                 .map(|u| format!(" (updated {u})"))
                 .unwrap_or_default();
-            println!("  Created: {date}{update_str}");
+            println!("  {:<LABEL_WIDTH$}{date}{update_str}", "Created:");
         }
         if let (Some(lat), Some(lon)) = (self.start_latitude, self.start_longitude) {
             let elev_str = self
@@ -342,62 +348,61 @@ impl HumanReadable for Course {
                 .and_then(|sp| sp.elevation)
                 .map(|e| format!(" ({e:.0}m)"))
                 .unwrap_or_default();
-            println!("  Start: {lat:.5}, {lon:.5}{elev_str}");
+            println!("  {:<LABEL_WIDTH$}{lat:.5}, {lon:.5}{elev_str}", "Start:");
         }
         if let Some(ref bb) = self.bounding_box {
             println!(
-                "  Bounds: ({:.5}, {:.5}) - ({:.5}, {:.5})",
+                "  {:<LABEL_WIDTH$}({:.5}, {:.5}) \u{2013} ({:.5}, {:.5})",
+                "Bounds:",
                 bb.lower_left.latitude,
                 bb.lower_left.longitude,
                 bb.upper_right.latitude,
                 bb.upper_right.longitude
             );
         }
-
-        // Feature flags line
-        {
-            let mut flags = Vec::new();
-            if self.has_pace_band == Some(true) {
-                flags.push("pace band");
-            }
-            if self.has_power_guide == Some(true) {
-                flags.push("power guide");
-            }
-            if self.include_laps == Some(true) {
-                flags.push("laps");
-            }
-            if self.matched_to_segments == Some(true) {
-                flags.push("matched to segments");
-            }
-            if self.has_turn_detection_disabled == Some(true) {
-                flags.push("turn detection disabled");
-            }
-            if !flags.is_empty() {
-                println!("  Features: {}", flags.join(", "));
-            }
+        let mut flags = Vec::new();
+        if self.has_pace_band == Some(true) {
+            flags.push("pace band");
         }
-
+        if self.has_power_guide == Some(true) {
+            flags.push("power guide");
+        }
+        if self.include_laps == Some(true) {
+            flags.push("laps");
+        }
+        if self.matched_to_segments == Some(true) {
+            flags.push("matched to segments");
+        }
+        if self.has_turn_detection_disabled == Some(true) {
+            flags.push("turn detection disabled");
+        }
+        if !flags.is_empty() {
+            println!("  {:<LABEL_WIDTH$}{}", "Features:", flags.join(", "));
+        }
         if let Some(ref note) = self.start_note {
-            println!("  Start note: {note}");
+            println!("  {:<LABEL_WIDTH$}{note}", "Start note:");
         }
         if let Some(ref note) = self.finish_note {
-            println!("  Finish note: {note}");
+            println!("  {:<LABEL_WIDTH$}{note}", "Finish note:");
         }
         if let Some(cutoff) = self.cutoff_duration {
-            println!("  Cutoff: {}", format_duration(cutoff));
+            println!("  {:<LABEL_WIDTH$}{}", "Cutoff:", format_duration(cutoff));
         }
         if !self.course_segments.is_empty() {
             let total_points: u64 = self.course_segments.iter().map(|s| s.num_points).sum();
             println!(
-                "  Segments: {} ({} points)",
-                self.course_segments.len(),
-                total_points
+                "  {:<LABEL_WIDTH$}{} ({total_points} points)",
+                "Segments:",
+                self.course_segments.len()
             );
         }
         if !self.geo_points.is_empty() {
-            println!("  Track: {} points", self.geo_points.len());
+            println!(
+                "  {:<LABEL_WIDTH$}{} points",
+                "Track:",
+                self.geo_points.len()
+            );
         }
-        println!();
     }
 }
 

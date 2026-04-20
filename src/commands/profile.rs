@@ -1,6 +1,6 @@
 use crate::client::GarminClient;
 use crate::error::{Error, Result};
-use crate::output::{HumanReadable, Output};
+use crate::output::{HumanReadable, LABEL_WIDTH, Output};
 use colored::Colorize;
 use serde::Serialize;
 
@@ -15,18 +15,20 @@ pub struct Profile {
 
 impl HumanReadable for Profile {
     fn print_human(&self) {
-        println!("{} {}", "Name:".bold(), self.display_name);
+        println!("{}", "Profile".bold());
+        println!("{}", "\u{2500}".repeat(40).dimmed());
+        println!("  {:<LABEL_WIDTH$}{}", "Name:", self.display_name.cyan());
         if let Some(ref u) = self.user_name {
-            println!("{} {}", "Username:".bold(), u);
+            println!("  {:<LABEL_WIDTH$}{u}", "Username:");
         }
         if let Some(ref e) = self.email {
-            println!("{} {}", "Email:".bold(), e);
+            println!("  {:<LABEL_WIDTH$}{e}", "Email:");
         }
         if let Some(ref l) = self.locale {
-            println!("{} {}", "Locale:".bold(), l);
+            println!("  {:<LABEL_WIDTH$}{l}", "Locale:");
         }
         if let Some(ref m) = self.measurement_system {
-            println!("{} {}", "Units:".bold(), m);
+            println!("  {:<LABEL_WIDTH$}{m}", "Units:");
         }
     }
 }
@@ -174,39 +176,38 @@ fn settings_from_json(
 impl HumanReadable for ProfileSettings {
     fn print_human(&self) {
         println!("{}", "Profile Settings".bold());
-        println!("{}", "\u{2500}".repeat(40));
+        println!("{}", "\u{2500}".repeat(40).dimmed());
 
         // Biometrics
         if let Some(w) = self.weight_kg {
-            println!("  {:<28}{:.1} kg", "Weight:".dimmed(), w);
+            println!("  {:<LABEL_WIDTH$}{:.1} kg", "Weight:", w);
         }
         if let Some(h) = self.height_cm {
-            println!("  {:<28}{:.0} cm", "Height:".dimmed(), h);
+            println!("  {:<LABEL_WIDTH$}{:.0} cm", "Height:", h);
         }
         if let Some(ref bd) = self.birth_date {
-            println!("  {:<28}{}", "Birth date:".dimmed(), bd);
+            println!("  {:<LABEL_WIDTH$}{bd}", "Birth date:");
         }
         if let Some(ref g) = self.gender {
-            println!("  {:<28}{}", "Gender:".dimmed(), g);
+            println!("  {:<LABEL_WIDTH$}{g}", "Gender:");
         }
         if let Some(ref h) = self.handedness {
-            println!("  {:<28}{}", "Handedness:".dimmed(), h);
+            println!("  {:<LABEL_WIDTH$}{h}", "Handedness:");
         }
 
         // Training thresholds
-        println!();
         if let Some(hr) = self.max_hr {
-            println!("  {:<28}{} bpm", "Max HR:".dimmed(), hr);
+            println!("  {:<LABEL_WIDTH$}{hr} bpm", "Max HR:");
         }
         if let Some(hr) = self.resting_hr {
-            println!("  {:<28}{} bpm", "Resting HR:".dimmed(), hr);
+            println!("  {:<LABEL_WIDTH$}{hr} bpm", "Resting HR:");
         }
         if let Some(hr) = self.lactate_threshold_hr {
-            print!("  {:<28}{} bpm", "LT HR:".dimmed(), hr);
-            if let Some(auto) = self.threshold_hr_auto_detected {
-                print!(" ({})", if auto { "auto" } else { "manual" });
-            }
-            println!();
+            let auto = self
+                .threshold_hr_auto_detected
+                .map(|a| format!(" ({})", if a { "auto" } else { "manual" }))
+                .unwrap_or_default();
+            println!("  {:<LABEL_WIDTH$}{hr} bpm{auto}", "LT HR:");
         }
         if let Some(speed) = self.lactate_threshold_speed
             && speed > 0.0
@@ -214,48 +215,46 @@ impl HumanReadable for ProfileSettings {
             let pace_secs = (1000.0 / speed) as u64;
             let min = pace_secs / 60;
             let sec = pace_secs % 60;
-            println!("  {:<28}{min}:{sec:02} /km", "LT speed:".dimmed());
+            println!("  {:<LABEL_WIDTH$}{min}:{sec:02} /km", "LT speed:");
         }
         if let Some(vo2) = self.vo2max_running {
-            println!("  {:<28}{:.1}", "VO2max (running):".dimmed(), vo2);
+            println!("  {:<LABEL_WIDTH$}{:.1}", "VO2max (run):", vo2);
         }
         if let Some(vo2) = self.vo2max_cycling {
-            println!("  {:<28}{:.1}", "VO2max (cycling):".dimmed(), vo2);
+            println!("  {:<LABEL_WIDTH$}{:.1}", "VO2max (bike):", vo2);
         }
         if let Some(ftp) = self.ftp {
-            print!("  {:<28}{:.0} W", "FTP:".dimmed(), ftp);
-            if let Some(auto) = self.ftp_auto_detected {
-                print!(" ({})", if auto { "auto" } else { "manual" });
-            }
-            println!();
+            let auto = self
+                .ftp_auto_detected
+                .map(|a| format!(" ({})", if a { "auto" } else { "manual" }))
+                .unwrap_or_default();
+            println!("  {:<LABEL_WIDTH$}{:.0} W{auto}", "FTP:", ftp);
         }
         if let Some(ref d) = self.training_status_paused_date {
-            println!("  {:<28}{}", "Training paused:".dimmed(), d);
+            println!("  {:<LABEL_WIDTH$}{d}", "Paused:");
         }
 
         // Preferences
-        println!();
         if let Some(ref m) = self.measurement_system {
-            println!("  {:<28}{}", "Units:".dimmed(), m);
+            println!("  {:<LABEL_WIDTH$}{m}", "Units:");
         }
         if let Some(ref tf) = self.time_format {
-            println!("  {:<28}{}", "Time format:".dimmed(), tf);
+            println!("  {:<LABEL_WIDTH$}{tf}", "Time format:");
         }
         if let Some(ref days) = self.available_training_days {
             let s: Vec<&str> = days.iter().map(|d| &d[..3]).collect();
-            println!("  {:<28}{}", "Training days:".dimmed(), s.join(", "));
+            println!("  {:<LABEL_WIDTH$}{}", "Training days:", s.join(", "));
         }
         if let Some(ref days) = self.preferred_long_training_days {
             let s: Vec<&str> = days.iter().map(|d| &d[..3]).collect();
-            println!("  {:<28}{}", "Long run days:".dimmed(), s.join(", "));
+            println!("  {:<LABEL_WIDTH$}{}", "Long run days:", s.join(", "));
         }
         if let Some(ref st) = self.sleep_time {
-            println!("  {:<28}{}", "Sleep time:".dimmed(), st);
+            println!("  {:<LABEL_WIDTH$}{st}", "Sleep time:");
         }
         if let Some(ref wt) = self.wake_time {
-            println!("  {:<28}{}", "Wake time:".dimmed(), wt);
+            println!("  {:<LABEL_WIDTH$}{wt}", "Wake time:");
         }
-        println!();
     }
 }
 
@@ -353,7 +352,7 @@ impl Change {
             }
         }
         format!(
-            "  {:<28}{} → {}",
+            "  {:<LABEL_WIDTH$}{} → {}",
             self.label,
             fmt_val(&self.old),
             fmt_val(&self.new)

@@ -1,6 +1,6 @@
 use crate::client::GarminClient;
 use crate::error::Result;
-use crate::output::{HumanReadable, Output};
+use crate::output::{HumanReadable, LABEL_WIDTH, Output};
 use crate::util::{parse_date, today};
 use colored::Colorize;
 use serde::Serialize;
@@ -78,7 +78,7 @@ fn sleep_summary_from(v: &serde_json::Value, date: &str) -> SleepSummary {
 
 impl HumanReadable for SleepSummary {
     fn print_human(&self) {
-        println!("{}  {}", self.date.bold(), "Sleep".dimmed());
+        println!("{}", self.date.bold());
         if let Some(score) = self.sleep_score {
             let qualifier = self
                 .sleep_score_qualifier
@@ -86,16 +86,15 @@ impl HumanReadable for SleepSummary {
                 .map(|q| format!(" ({q})"))
                 .unwrap_or_default();
             println!(
-                "  {:<14}{}{}",
+                "  {:<LABEL_WIDTH$}{}{}",
                 "Score:",
                 score.to_string().cyan(),
                 qualifier
             );
         }
         if let Some(s) = self.sleep_seconds {
-            println!("  {:<14}{}", "Duration:", fmt_duration(s).cyan());
+            println!("  {:<LABEL_WIDTH$}{}", "Duration:", fmt_duration(s).cyan());
         }
-        // Deep / Light / REM / Awake on one line
         let parts: Vec<String> = [
             self.deep_sleep_seconds
                 .map(|s| format!("Deep: {}", fmt_duration(s))),
@@ -110,15 +109,14 @@ impl HumanReadable for SleepSummary {
         .flatten()
         .collect();
         if !parts.is_empty() {
-            println!("  {:<14}{}", "Stages:", parts.join("  "));
+            println!("  {:<LABEL_WIDTH$}{}", "Stages:", parts.join("  "));
         }
         if let (Some(start), Some(end)) = (&self.sleep_start, &self.sleep_end) {
-            println!("  {:<14}{start} \u{2013} {end}", "Window:");
+            println!("  {:<LABEL_WIDTH$}{start} \u{2013} {end}", "Window:");
         }
         if let Some(s) = self.sleep_need_seconds {
-            println!("  {:<14}{}", "Need:", fmt_duration(s));
+            println!("  {:<LABEL_WIDTH$}{}", "Need:", fmt_duration(s));
         }
-        println!();
     }
 }
 
@@ -133,11 +131,12 @@ pub struct SleepScore {
 
 impl HumanReadable for SleepScore {
     fn print_human(&self) {
+        println!("{}", self.date.bold());
         let score_str = self
             .score
             .map(|s| s.to_string())
             .unwrap_or_else(|| "-".into());
-        println!("{}  Score: {}", self.date.bold(), score_str.cyan());
+        println!("  {:<LABEL_WIDTH$}{}", "Score:", score_str.cyan());
     }
 }
 
@@ -186,14 +185,13 @@ fn stress_summary_from(v: &serde_json::Value, date: &str) -> StressSummary {
 
 impl HumanReadable for StressSummary {
     fn print_human(&self) {
-        println!("{}  {}", self.date.bold(), "Stress".dimmed());
+        println!("{}", self.date.bold());
         if let Some(avg) = self.avg_stress {
-            println!("  {:<14}{}", "Average:", avg.to_string().cyan());
+            println!("  {:<LABEL_WIDTH$}{}", "Average:", avg.to_string().cyan());
         }
         if let Some(max) = self.max_stress {
-            println!("  {:<14}{max}", "Max:");
+            println!("  {:<LABEL_WIDTH$}{max}", "Max:");
         }
-        println!();
     }
 }
 
@@ -224,17 +222,16 @@ fn heart_rate_from(v: &serde_json::Value, date: &str) -> HeartRateDay {
 
 impl HumanReadable for HeartRateDay {
     fn print_human(&self) {
-        println!("{}  {}", self.date.bold(), "Heart Rate".dimmed());
+        println!("{}", self.date.bold());
         if let Some(v) = self.resting_hr {
-            println!("  {:<14}{} bpm", "Resting:", v.to_string().cyan());
+            println!("  {:<LABEL_WIDTH$}{} bpm", "Resting:", v.to_string().cyan());
         }
         if let (Some(lo), Some(hi)) = (self.min_hr, self.max_hr) {
-            println!("  {:<14}{lo}\u{2013}{hi} bpm", "Range:");
+            println!("  {:<LABEL_WIDTH$}{lo}\u{2013}{hi} bpm", "Range:");
         }
         if let Some(v) = self.avg_7day_resting {
-            println!("  {:<14}{v} bpm", "7-day avg:");
+            println!("  {:<LABEL_WIDTH$}{v} bpm", "7-day avg:");
         }
-        println!();
     }
 }
 
@@ -263,14 +260,13 @@ fn body_battery_from(v: &serde_json::Value, date: &str) -> BodyBattery {
 
 impl HumanReadable for BodyBattery {
     fn print_human(&self) {
-        println!("{}  {}", self.date.bold(), "Body Battery".dimmed());
+        println!("{}", self.date.bold());
         if let (Some(lo), Some(hi)) = (self.body_battery_low, self.body_battery_high) {
-            println!("  {:<14}{lo}\u{2013}{hi}", "Range:");
+            println!("  {:<LABEL_WIDTH$}{lo}\u{2013}{hi}", "Range:");
         }
         if let Some(v) = self.body_battery_latest {
-            println!("  {:<14}{}", "Latest:", v.to_string().cyan());
+            println!("  {:<LABEL_WIDTH$}{}", "Latest:", v.to_string().cyan());
         }
-        println!();
     }
 }
 
@@ -322,23 +318,26 @@ fn hrv_summary_from(v: &serde_json::Value, date: &str) -> HrvSummary {
 
 impl HumanReadable for HrvSummary {
     fn print_human(&self) {
-        println!("{}  {}", self.date.bold(), "HRV".dimmed());
+        println!("{}", self.date.bold());
         if let Some(v) = self.last_night_avg {
-            println!("  {:<14}{} ms", "Last night:", v.to_string().cyan());
+            println!(
+                "  {:<LABEL_WIDTH$}{} ms",
+                "Last night:",
+                v.to_string().cyan()
+            );
         }
         if let Some(v) = self.last_night_5min_high {
-            println!("  {:<14}{v} ms", "5-min high:");
+            println!("  {:<LABEL_WIDTH$}{v} ms", "5-min high:");
         }
         if let Some(v) = self.weekly_average {
-            println!("  {:<14}{v} ms", "Weekly avg:");
+            println!("  {:<LABEL_WIDTH$}{v} ms", "Weekly avg:");
         }
         if let Some(ref s) = self.status {
-            println!("  {:<14}{s}", "Status:");
+            println!("  {:<LABEL_WIDTH$}{s}", "Status:");
         }
         if let (Some(lo), Some(hi)) = (self.baseline_balanced_low, self.baseline_balanced_upper) {
-            println!("  {:<14}{lo}\u{2013}{hi} ms", "Baseline:");
+            println!("  {:<LABEL_WIDTH$}{lo}\u{2013}{hi} ms", "Baseline:");
         }
-        println!();
     }
 }
 
@@ -368,18 +367,22 @@ fn steps_from(v: &serde_json::Value, date: &str) -> Steps {
 
 impl HumanReadable for Steps {
     fn print_human(&self) {
-        println!("{}  {}", self.date.bold(), "Steps".dimmed());
+        println!("{}", self.date.bold());
         if let Some(s) = self.total_steps {
             let goal_str = self
                 .step_goal
                 .map(|g| format!(" / {g}"))
                 .unwrap_or_default();
-            println!("  {:<14}{}{}", "Steps:", s.to_string().cyan(), goal_str);
+            println!(
+                "  {:<LABEL_WIDTH$}{}{}",
+                "Steps:",
+                s.to_string().cyan(),
+                goal_str
+            );
         }
         if let Some(d) = self.total_distance_meters {
-            println!("  {:<14}{:.2} km", "Distance:", d / 1000.0);
+            println!("  {:<LABEL_WIDTH$}{:.2} km", "Distance:", d / 1000.0);
         }
-        println!();
     }
 }
 
@@ -429,30 +432,31 @@ fn weight_from(v: &serde_json::Value, date: &str) -> Weight {
 
 impl HumanReadable for Weight {
     fn print_human(&self) {
-        println!("{}  {}", self.date.bold(), "Weight".dimmed());
-        if let Some(w) = self.weight_kg {
-            println!("  {:<14}{} kg", "Weight:", format!("{w:.1}").cyan());
-        } else {
+        println!("{}", self.date.bold());
+        let Some(w) = self.weight_kg else {
             println!("  No data");
-            println!();
             return;
-        }
+        };
+        println!(
+            "  {:<LABEL_WIDTH$}{} kg",
+            "Weight:",
+            format!("{w:.1}").cyan()
+        );
         if let Some(b) = self.bmi {
-            println!("  {:<14}{b:.1}", "BMI:");
+            println!("  {:<LABEL_WIDTH$}{b:.1}", "BMI:");
         }
         if let Some(f) = self.body_fat_percent {
-            println!("  {:<14}{f:.1}%", "Body fat:");
+            println!("  {:<LABEL_WIDTH$}{f:.1}%", "Body fat:");
         }
         if let Some(m) = self.muscle_mass_kg {
-            println!("  {:<14}{m:.1} kg", "Muscle:");
+            println!("  {:<LABEL_WIDTH$}{m:.1} kg", "Muscle:");
         }
         if let Some(b) = self.bone_mass_kg {
-            println!("  {:<14}{b:.1} kg", "Bone:");
+            println!("  {:<LABEL_WIDTH$}{b:.1} kg", "Bone:");
         }
         if let Some(w) = self.body_water_percent {
-            println!("  {:<14}{w:.1}%", "Water:");
+            println!("  {:<LABEL_WIDTH$}{w:.1}%", "Water:");
         }
-        println!();
     }
 }
 
@@ -477,14 +481,17 @@ fn spo2_from(v: &serde_json::Value, date: &str) -> SpO2 {
 
 impl HumanReadable for SpO2 {
     fn print_human(&self) {
-        println!("{}  {}", self.date.bold(), "SpO2".dimmed());
+        println!("{}", self.date.bold());
         if let Some(a) = self.avg_spo2 {
-            println!("  {:<14}{}%", "Average:", format!("{a:.0}").cyan());
+            println!(
+                "  {:<LABEL_WIDTH$}{}%",
+                "Average:",
+                format!("{a:.0}").cyan()
+            );
         }
         if let Some(l) = self.lowest_spo2 {
-            println!("  {:<14}{l:.0}%", "Lowest:");
+            println!("  {:<LABEL_WIDTH$}{l:.0}%", "Lowest:");
         }
-        println!();
     }
 }
 
@@ -515,17 +522,16 @@ fn respiration_from(v: &serde_json::Value, date: &str) -> Respiration {
 
 impl HumanReadable for Respiration {
     fn print_human(&self) {
-        println!("{}  {}", self.date.bold(), "Respiration".dimmed());
+        println!("{}", self.date.bold());
         if let Some(w) = self.avg_waking_br {
-            println!("  {:<14}{w:.1} br/min", "Waking:");
+            println!("  {:<LABEL_WIDTH$}{w:.1} br/min", "Waking:");
         }
         if let Some(s) = self.avg_sleeping_br {
-            println!("  {:<14}{s:.1} br/min", "Sleeping:");
+            println!("  {:<LABEL_WIDTH$}{s:.1} br/min", "Sleeping:");
         }
         if let (Some(lo), Some(hi)) = (self.lowest_br, self.highest_br) {
-            println!("  {:<14}{lo:.1}\u{2013}{hi:.1} br/min", "Range:");
+            println!("  {:<LABEL_WIDTH$}{lo:.1}\u{2013}{hi:.1} br/min", "Range:");
         }
-        println!();
     }
 }
 
@@ -555,22 +561,19 @@ fn intensity_minutes_from(v: &serde_json::Value, date: &str) -> IntensityMinutes
 
 impl HumanReadable for IntensityMinutes {
     fn print_human(&self) {
-        println!("{}  {}", self.date.bold(), "Intensity Minutes".dimmed());
+        println!("{}", self.date.bold());
         let goal_str = self
             .weekly_goal
             .map(|g| format!(" / {g}"))
             .unwrap_or_default();
         println!(
-            "  {:<14}{} min{}",
+            "  {:<LABEL_WIDTH$}{} min{}",
             "Total:",
             self.total.to_string().cyan(),
             goal_str
         );
-        println!(
-            "  {:<14}{} min  Vigorous: {} min",
-            "Moderate:", self.moderate, self.vigorous
-        );
-        println!();
+        println!("  {:<LABEL_WIDTH$}{} min", "Moderate:", self.moderate);
+        println!("  {:<LABEL_WIDTH$}{} min", "Vigorous:", self.vigorous);
     }
 }
 
@@ -598,28 +601,66 @@ fn hydration_from(v: &serde_json::Value, date: &str) -> Hydration {
 
 impl HumanReadable for Hydration {
     fn print_human(&self) {
-        println!("{}  {}", self.date.bold(), "Hydration".dimmed());
+        println!("{}", self.date.bold());
         match (self.intake_ml, self.goal_ml) {
             (Some(intake), Some(goal)) => {
-                println!("  {:<14}{:.0} / {:.0} ml", "Intake:", intake, goal);
+                println!(
+                    "  {:<LABEL_WIDTH$}{:.0} / {:.0} ml",
+                    "Intake:", intake, goal
+                );
             }
             (Some(intake), None) => {
-                println!("  {:<14}{:.0} ml", "Intake:", intake);
+                println!("  {:<LABEL_WIDTH$}{:.0} ml", "Intake:", intake);
             }
             (None, Some(goal)) => {
-                println!("  {:<14}{:.0} ml", "Goal:", goal);
+                println!("  {:<LABEL_WIDTH$}{:.0} ml", "Goal:", goal);
             }
             (None, None) => {
                 println!("  No data");
             }
         }
-        println!();
     }
 }
 
 // ---------------------------------------------------------------------------
 // Commands
 // ---------------------------------------------------------------------------
+
+/// Fetch one JSON blob per date in `[end - days + 1 .. end]` in parallel
+/// and map each with `mk_item`. Produces items in chronological order.
+async fn fetch_daily<T, F, M>(
+    client: &GarminClient,
+    end: chrono::NaiveDate,
+    days: u32,
+    mk_path: F,
+    mk_item: M,
+) -> Result<Vec<T>>
+where
+    F: Fn(&str) -> String,
+    M: Fn(&serde_json::Value, &str) -> T,
+{
+    let dates: Vec<String> = (0..days)
+        .rev()
+        .map(|i| {
+            (end - chrono::Duration::days(i as i64))
+                .format("%Y-%m-%d")
+                .to_string()
+        })
+        .collect();
+    let futs = dates.iter().map(|ds| {
+        let path = mk_path(ds);
+        async move { client.get_json::<serde_json::Value>(&path).await }
+    });
+    let results: Vec<serde_json::Value> = futures::future::join_all(futs)
+        .await
+        .into_iter()
+        .collect::<Result<_>>()?;
+    Ok(results
+        .iter()
+        .zip(dates.iter())
+        .map(|(v, ds)| mk_item(v, ds))
+        .collect())
+}
 
 pub async fn sleep(
     client: &GarminClient,
@@ -628,41 +669,17 @@ pub async fn sleep(
     days: Option<u32>,
 ) -> Result<()> {
     let display_name = client.display_name().await?;
-    let end_date = date.map(String::from).unwrap_or_else(today);
+    let end = parse_date(&date.map(String::from).unwrap_or_else(today))?;
     let days = days.unwrap_or(1);
-    let end = parse_date(&end_date)?;
-
-    if days == 1 {
-        let path =
-            format!("/wellness-service/wellness/dailySleepData/{display_name}?date={end_date}");
-        let v: serde_json::Value = client.get_json(&path).await?;
-        let item = sleep_summary_from(&v, &end_date);
-        output.print(&item);
-    } else {
-        let futs: Vec<_> = (0..days)
-            .rev()
-            .map(|i| {
-                let d = end - chrono::Duration::days(i as i64);
-                let ds = d.format("%Y-%m-%d").to_string();
-                let path =
-                    format!("/wellness-service/wellness/dailySleepData/{display_name}?date={ds}");
-                async move { client.get_json::<serde_json::Value>(&path).await }
-            })
-            .collect();
-        let results: Vec<serde_json::Value> = futures::future::join_all(futs)
-            .await
-            .into_iter()
-            .collect::<Result<_>>()?;
-        let items: Vec<SleepSummary> = results
-            .iter()
-            .enumerate()
-            .map(|(i, v)| {
-                let d = end - chrono::Duration::days((days - 1 - i as u32) as i64);
-                sleep_summary_from(v, &d.format("%Y-%m-%d").to_string())
-            })
-            .collect();
-        output.print_list(&items, "Sleep");
-    }
+    let items = fetch_daily(
+        client,
+        end,
+        days,
+        |ds| format!("/wellness-service/wellness/dailySleepData/{display_name}?date={ds}"),
+        sleep_summary_from,
+    )
+    .await?;
+    output.print_list(&items, "Sleep");
     Ok(())
 }
 
@@ -694,11 +711,7 @@ pub async fn sleep_scores(
         }],
     };
 
-    if items.len() == 1 {
-        output.print(&items[0]);
-    } else {
-        output.print_list(&items, "Sleep Scores");
-    }
+    output.print_list(&items, "Sleep Scores");
     Ok(())
 }
 
@@ -708,41 +721,17 @@ pub async fn stress(
     date: Option<&str>,
     days: Option<u32>,
 ) -> Result<()> {
-    let end_date = date.map(String::from).unwrap_or_else(today);
+    let end = parse_date(&date.map(String::from).unwrap_or_else(today))?;
     let days = days.unwrap_or(1);
-    let end = parse_date(&end_date)?;
-
-    if days == 1 {
-        let path = format!("/wellness-service/wellness/dailyStress/{end_date}");
-        let v: serde_json::Value = client.get_json(&path).await?;
-        let item = stress_summary_from(&v, &end_date);
-        output.print(&item);
-    } else {
-        let futs: Vec<_> = (0..days)
-            .rev()
-            .map(|i| {
-                let d = end - chrono::Duration::days(i as i64);
-                let path = format!(
-                    "/wellness-service/wellness/dailyStress/{}",
-                    d.format("%Y-%m-%d")
-                );
-                async move { client.get_json::<serde_json::Value>(&path).await }
-            })
-            .collect();
-        let results: Vec<serde_json::Value> = futures::future::join_all(futs)
-            .await
-            .into_iter()
-            .collect::<Result<_>>()?;
-        let items: Vec<StressSummary> = results
-            .iter()
-            .enumerate()
-            .map(|(i, v)| {
-                let d = end - chrono::Duration::days((days - 1 - i as u32) as i64);
-                stress_summary_from(v, &d.format("%Y-%m-%d").to_string())
-            })
-            .collect();
-        output.print_list(&items, "Stress");
-    }
+    let items = fetch_daily(
+        client,
+        end,
+        days,
+        |ds| format!("/wellness-service/wellness/dailyStress/{ds}"),
+        stress_summary_from,
+    )
+    .await?;
+    output.print_list(&items, "Stress");
     Ok(())
 }
 
@@ -753,42 +742,17 @@ pub async fn heart_rate(
     days: Option<u32>,
 ) -> Result<()> {
     let display_name = client.display_name().await?;
-    let end_date = date.map(String::from).unwrap_or_else(today);
+    let end = parse_date(&date.map(String::from).unwrap_or_else(today))?;
     let days = days.unwrap_or(1);
-    let end = parse_date(&end_date)?;
-
-    if days == 1 {
-        let path =
-            format!("/wellness-service/wellness/dailyHeartRate/{display_name}?date={end_date}");
-        let v: serde_json::Value = client.get_json(&path).await?;
-        let item = heart_rate_from(&v, &end_date);
-        output.print(&item);
-    } else {
-        let futs: Vec<_> = (0..days)
-            .rev()
-            .map(|i| {
-                let d = end - chrono::Duration::days(i as i64);
-                let path = format!(
-                    "/wellness-service/wellness/dailyHeartRate/{display_name}?date={}",
-                    d.format("%Y-%m-%d")
-                );
-                async move { client.get_json::<serde_json::Value>(&path).await }
-            })
-            .collect();
-        let results: Vec<serde_json::Value> = futures::future::join_all(futs)
-            .await
-            .into_iter()
-            .collect::<Result<_>>()?;
-        let items: Vec<HeartRateDay> = results
-            .iter()
-            .enumerate()
-            .map(|(i, v)| {
-                let d = end - chrono::Duration::days((days - 1 - i as u32) as i64);
-                heart_rate_from(v, &d.format("%Y-%m-%d").to_string())
-            })
-            .collect();
-        output.print_list(&items, "Heart Rate");
-    }
+    let items = fetch_daily(
+        client,
+        end,
+        days,
+        |ds| format!("/wellness-service/wellness/dailyHeartRate/{display_name}?date={ds}"),
+        heart_rate_from,
+    )
+    .await?;
+    output.print_list(&items, "Heart Rate");
     Ok(())
 }
 
@@ -796,12 +760,19 @@ pub async fn body_battery(
     client: &GarminClient,
     output: &Output,
     date: Option<&str>,
+    days: Option<u32>,
 ) -> Result<()> {
-    let date_str = date.map(String::from).unwrap_or_else(today);
-    let path = format!("/wellness-service/wellness/dailyStress/{date_str}");
-    let v: serde_json::Value = client.get_json(&path).await?;
-    let item = body_battery_from(&v, &date_str);
-    output.print(&item);
+    let end = parse_date(&date.map(String::from).unwrap_or_else(today))?;
+    let days = days.unwrap_or(1);
+    let items = fetch_daily(
+        client,
+        end,
+        days,
+        |ds| format!("/wellness-service/wellness/dailyStress/{ds}"),
+        body_battery_from,
+    )
+    .await?;
+    output.print_list(&items, "Body Battery");
     Ok(())
 }
 
@@ -811,38 +782,17 @@ pub async fn hrv(
     date: Option<&str>,
     days: Option<u32>,
 ) -> Result<()> {
-    let end_date = date.map(String::from).unwrap_or_else(today);
+    let end = parse_date(&date.map(String::from).unwrap_or_else(today))?;
     let days = days.unwrap_or(1);
-    let end = parse_date(&end_date)?;
-
-    if days == 1 {
-        let path = format!("/hrv-service/hrv/{end_date}");
-        let v: serde_json::Value = client.get_json(&path).await?;
-        let item = hrv_summary_from(&v, &end_date);
-        output.print(&item);
-    } else {
-        let futs: Vec<_> = (0..days)
-            .rev()
-            .map(|i| {
-                let d = end - chrono::Duration::days(i as i64);
-                let path = format!("/hrv-service/hrv/{}", d.format("%Y-%m-%d"));
-                async move { client.get_json::<serde_json::Value>(&path).await }
-            })
-            .collect();
-        let results: Vec<serde_json::Value> = futures::future::join_all(futs)
-            .await
-            .into_iter()
-            .collect::<Result<_>>()?;
-        let items: Vec<HrvSummary> = results
-            .iter()
-            .enumerate()
-            .map(|(i, v)| {
-                let d = end - chrono::Duration::days((days - 1 - i as u32) as i64);
-                hrv_summary_from(v, &d.format("%Y-%m-%d").to_string())
-            })
-            .collect();
-        output.print_list(&items, "HRV");
-    }
+    let items = fetch_daily(
+        client,
+        end,
+        days,
+        |ds| format!("/hrv-service/hrv/{ds}"),
+        hrv_summary_from,
+    )
+    .await?;
+    output.print_list(&items, "HRV");
     Ok(())
 }
 
@@ -852,39 +802,17 @@ pub async fn steps(
     date: Option<&str>,
     days: Option<u32>,
 ) -> Result<()> {
-    let end_date = date.map(String::from).unwrap_or_else(today);
+    let end = parse_date(&date.map(String::from).unwrap_or_else(today))?;
     let days = days.unwrap_or(1);
-    let end = parse_date(&end_date)?;
-
-    if days == 1 {
-        let path = format!("/usersummary-service/stats/steps/daily/{end_date}/{end_date}");
-        let v: serde_json::Value = client.get_json(&path).await?;
-        let item = steps_from(&v, &end_date);
-        output.print(&item);
-    } else {
-        let futs: Vec<_> = (0..days)
-            .rev()
-            .map(|i| {
-                let d = end - chrono::Duration::days(i as i64);
-                let ds = d.format("%Y-%m-%d").to_string();
-                let path = format!("/usersummary-service/stats/steps/daily/{ds}/{ds}");
-                async move { client.get_json::<serde_json::Value>(&path).await }
-            })
-            .collect();
-        let results: Vec<serde_json::Value> = futures::future::join_all(futs)
-            .await
-            .into_iter()
-            .collect::<Result<_>>()?;
-        let items: Vec<Steps> = results
-            .iter()
-            .enumerate()
-            .map(|(i, v)| {
-                let d = end - chrono::Duration::days((days - 1 - i as u32) as i64);
-                steps_from(v, &d.format("%Y-%m-%d").to_string())
-            })
-            .collect();
-        output.print_list(&items, "Steps");
-    }
+    let items = fetch_daily(
+        client,
+        end,
+        days,
+        |ds| format!("/usersummary-service/stats/steps/daily/{ds}/{ds}"),
+        steps_from,
+    )
+    .await?;
+    output.print_list(&items, "Steps");
     Ok(())
 }
 
@@ -894,40 +822,17 @@ pub async fn weight(
     date: Option<&str>,
     days: Option<u32>,
 ) -> Result<()> {
-    let end_date = date.map(String::from).unwrap_or_else(today);
+    let end = parse_date(&date.map(String::from).unwrap_or_else(today))?;
     let days = days.unwrap_or(1);
-    let end = parse_date(&end_date)?;
-
-    if days == 1 {
-        let path =
-            format!("/weight-service/weight/dateRange?startDate={end_date}&endDate={end_date}");
-        let v: serde_json::Value = client.get_json(&path).await?;
-        let item = weight_from(&v, &end_date);
-        output.print(&item);
-    } else {
-        let futs: Vec<_> = (0..days)
-            .rev()
-            .map(|i| {
-                let d = end - chrono::Duration::days(i as i64);
-                let ds = d.format("%Y-%m-%d").to_string();
-                let path = format!("/weight-service/weight/dateRange?startDate={ds}&endDate={ds}");
-                async move { client.get_json::<serde_json::Value>(&path).await }
-            })
-            .collect();
-        let results: Vec<serde_json::Value> = futures::future::join_all(futs)
-            .await
-            .into_iter()
-            .collect::<Result<_>>()?;
-        let items: Vec<Weight> = results
-            .iter()
-            .enumerate()
-            .map(|(i, v)| {
-                let d = end - chrono::Duration::days((days - 1 - i as u32) as i64);
-                weight_from(v, &d.format("%Y-%m-%d").to_string())
-            })
-            .collect();
-        output.print_list(&items, "Weight");
-    }
+    let items = fetch_daily(
+        client,
+        end,
+        days,
+        |ds| format!("/weight-service/weight/dateRange?startDate={ds}&endDate={ds}"),
+        weight_from,
+    )
+    .await?;
+    output.print_list(&items, "Weight");
     Ok(())
 }
 
@@ -937,59 +842,57 @@ pub async fn hydration(
     date: Option<&str>,
     days: Option<u32>,
 ) -> Result<()> {
-    let end_date = date.map(String::from).unwrap_or_else(today);
+    let end = parse_date(&date.map(String::from).unwrap_or_else(today))?;
     let days = days.unwrap_or(1);
-    let end = parse_date(&end_date)?;
-
-    if days == 1 {
-        let path = format!("/usersummary-service/usersummary/hydration/daily/{end_date}");
-        let v: serde_json::Value = client.get_json(&path).await?;
-        let item = hydration_from(&v, &end_date);
-        output.print(&item);
-    } else {
-        let futs: Vec<_> = (0..days)
-            .rev()
-            .map(|i| {
-                let d = end - chrono::Duration::days(i as i64);
-                let path = format!(
-                    "/usersummary-service/usersummary/hydration/daily/{}",
-                    d.format("%Y-%m-%d")
-                );
-                async move { client.get_json::<serde_json::Value>(&path).await }
-            })
-            .collect();
-        let results: Vec<serde_json::Value> = futures::future::join_all(futs)
-            .await
-            .into_iter()
-            .collect::<Result<_>>()?;
-        let items: Vec<Hydration> = results
-            .iter()
-            .enumerate()
-            .map(|(i, v)| {
-                let d = end - chrono::Duration::days((days - 1 - i as u32) as i64);
-                hydration_from(v, &d.format("%Y-%m-%d").to_string())
-            })
-            .collect();
-        output.print_list(&items, "Hydration");
-    }
+    let items = fetch_daily(
+        client,
+        end,
+        days,
+        |ds| format!("/usersummary-service/usersummary/hydration/daily/{ds}"),
+        hydration_from,
+    )
+    .await?;
+    output.print_list(&items, "Hydration");
     Ok(())
 }
 
-pub async fn spo2(client: &GarminClient, output: &Output, date: Option<&str>) -> Result<()> {
-    let date_str = date.map(String::from).unwrap_or_else(today);
-    let path = format!("/wellness-service/wellness/dailySpo2/{date_str}");
-    let v: serde_json::Value = client.get_json(&path).await?;
-    let item = spo2_from(&v, &date_str);
-    output.print(&item);
+pub async fn spo2(
+    client: &GarminClient,
+    output: &Output,
+    date: Option<&str>,
+    days: Option<u32>,
+) -> Result<()> {
+    let end = parse_date(&date.map(String::from).unwrap_or_else(today))?;
+    let days = days.unwrap_or(1);
+    let items = fetch_daily(
+        client,
+        end,
+        days,
+        |ds| format!("/wellness-service/wellness/dailySpo2/{ds}"),
+        spo2_from,
+    )
+    .await?;
+    output.print_list(&items, "SpO2");
     Ok(())
 }
 
-pub async fn respiration(client: &GarminClient, output: &Output, date: Option<&str>) -> Result<()> {
-    let date_str = date.map(String::from).unwrap_or_else(today);
-    let path = format!("/wellness-service/wellness/daily/respiration/{date_str}");
-    let v: serde_json::Value = client.get_json(&path).await?;
-    let item = respiration_from(&v, &date_str);
-    output.print(&item);
+pub async fn respiration(
+    client: &GarminClient,
+    output: &Output,
+    date: Option<&str>,
+    days: Option<u32>,
+) -> Result<()> {
+    let end = parse_date(&date.map(String::from).unwrap_or_else(today))?;
+    let days = days.unwrap_or(1);
+    let items = fetch_daily(
+        client,
+        end,
+        days,
+        |ds| format!("/wellness-service/wellness/daily/respiration/{ds}"),
+        respiration_from,
+    )
+    .await?;
+    output.print_list(&items, "Respiration");
     Ok(())
 }
 
@@ -999,38 +902,16 @@ pub async fn intensity_minutes(
     date: Option<&str>,
     days: Option<u32>,
 ) -> Result<()> {
-    let end_date = date.map(String::from).unwrap_or_else(today);
+    let end = parse_date(&date.map(String::from).unwrap_or_else(today))?;
     let days = days.unwrap_or(1);
-    let end = parse_date(&end_date)?;
-
-    if days == 1 {
-        let path = format!("/usersummary-service/stats/im/daily/{end_date}/{end_date}");
-        let v: serde_json::Value = client.get_json(&path).await?;
-        let item = intensity_minutes_from(&v, &end_date);
-        output.print(&item);
-    } else {
-        let futs: Vec<_> = (0..days)
-            .rev()
-            .map(|i| {
-                let d = end - chrono::Duration::days(i as i64);
-                let ds = d.format("%Y-%m-%d").to_string();
-                let path = format!("/usersummary-service/stats/im/daily/{ds}/{ds}");
-                async move { client.get_json::<serde_json::Value>(&path).await }
-            })
-            .collect();
-        let results: Vec<serde_json::Value> = futures::future::join_all(futs)
-            .await
-            .into_iter()
-            .collect::<Result<_>>()?;
-        let items: Vec<IntensityMinutes> = results
-            .iter()
-            .enumerate()
-            .map(|(i, v)| {
-                let d = end - chrono::Duration::days((days - 1 - i as u32) as i64);
-                intensity_minutes_from(v, &d.format("%Y-%m-%d").to_string())
-            })
-            .collect();
-        output.print_list(&items, "Intensity Minutes");
-    }
+    let items = fetch_daily(
+        client,
+        end,
+        days,
+        |ds| format!("/usersummary-service/stats/im/daily/{ds}/{ds}"),
+        intensity_minutes_from,
+    )
+    .await?;
+    output.print_list(&items, "Intensity Minutes");
     Ok(())
 }

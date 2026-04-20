@@ -36,11 +36,34 @@ impl Output {
             self.print_json(&items);
         } else if !self.quiet {
             println!("{}", title.bold());
-            println!("{}", "\u{2500}".repeat(40));
+            println!("{}", "\u{2500}".repeat(40).dimmed());
+            for (i, item) in items.iter().enumerate() {
+                if i > 0 {
+                    println!();
+                }
+                item.print_human();
+            }
+            println!();
+            println!(
+                "{} item{}",
+                items.len(),
+                if items.len() == 1 { "" } else { "s" }
+            );
+        }
+    }
+
+    /// Like `print_list` but prints rows contiguously without blank separators.
+    /// Use for tabular snapshots (zones, splits, laps) where each row is a
+    /// single line and blank-separation would waste vertical space.
+    pub fn print_table<T: Serialize + HumanReadable>(&self, items: &[T], title: &str) {
+        if self.json {
+            self.print_json(&items);
+        } else if !self.quiet {
+            println!("{}", title.bold());
+            println!("{}", "\u{2500}".repeat(40).dimmed());
             for item in items {
                 item.print_human();
             }
-            println!("\n{} items", items.len());
         }
     }
 
@@ -128,3 +151,7 @@ impl Output {
 pub trait HumanReadable {
     fn print_human(&self);
 }
+
+/// Shared column width for "  Label: value" rows across human output.
+/// Longest label is ~14 chars ("Fitness trend:"); pad to 16 for breathing room.
+pub const LABEL_WIDTH: usize = 16;

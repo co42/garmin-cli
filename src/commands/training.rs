@@ -1,6 +1,6 @@
 use crate::client::GarminClient;
 use crate::error::Result;
-use crate::output::{HumanReadable, Output};
+use crate::output::{HumanReadable, LABEL_WIDTH, Output};
 use crate::util::{parse_date, today};
 use colored::Colorize;
 use serde::Serialize;
@@ -101,11 +101,9 @@ pub struct TrainingStatus {
     pub monthly_load_anaerobic_target_max: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub load_balance_feedback: Option<String>,
-    // VO2max
+    // VO2max — precise value if available, else integer-rounded.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vo2max: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub vo2max_precise: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vo2max_date: Option<String>,
 }
@@ -152,37 +150,35 @@ fn training_status_from(v: &serde_json::Value, date: &str) -> TrainingStatus {
         monthly_load_anaerobic_target_min: lb["monthlyLoadAnaerobicTargetMin"].as_i64(),
         monthly_load_anaerobic_target_max: lb["monthlyLoadAnaerobicTargetMax"].as_i64(),
         load_balance_feedback: lb["trainingBalanceFeedbackPhrase"].as_str().map(Into::into),
-        vo2max: vo2["vo2MaxValue"].as_f64(),
-        vo2max_precise: vo2["vo2MaxPreciseValue"].as_f64(),
+        vo2max: vo2["vo2MaxPreciseValue"]
+            .as_f64()
+            .or(vo2["vo2MaxValue"].as_f64()),
         vo2max_date: vo2["calendarDate"].as_str().map(Into::into),
     }
 }
 
 impl HumanReadable for TrainingStatus {
     fn print_human(&self) {
-        println!("{}  {}", self.date.bold(), "Training Status".dimmed());
+        println!("{}", self.date.bold());
 
-        // Status line
         if let Some(ref s) = self.status {
-            let since = self.since_date.as_deref().unwrap_or("");
-            if since.is_empty() {
-                println!("  Status:        {}", s.yellow());
-            } else {
-                println!("  Status:        {} (since {})", s.yellow(), since);
-            }
+            let since = self
+                .since_date
+                .as_deref()
+                .map(|d| format!(" (since {d})"))
+                .unwrap_or_default();
+            println!("  {:<LABEL_WIDTH$}{}{since}", "Status:", s.yellow());
         }
 
-        // Fitness trend
         if let Some(ref trend) = self.fitness_trend {
-            let sport = self.fitness_trend_sport.as_deref().unwrap_or("");
-            if sport.is_empty() {
-                println!("  Fitness trend: {trend}");
-            } else {
-                println!("  Fitness trend: {trend} ({})", sport.to_lowercase());
-            }
+            let sport = self
+                .fitness_trend_sport
+                .as_deref()
+                .map(|s| format!(" ({})", s.to_lowercase()))
+                .unwrap_or_default();
+            println!("  {:<LABEL_WIDTH$}{trend}{sport}", "Fitness trend:");
         }
 
-        // ACWR
         if let Some(acwr) = self.acwr {
             let status = self.acwr_status.as_deref().unwrap_or("?");
             let acute = self
@@ -193,40 +189,48 @@ impl HumanReadable for TrainingStatus {
                 .chronic_load
                 .map(|v| format!("{v:.0}"))
                 .unwrap_or_default();
-            println!("  ACWR:          {acwr:.1} ({status}) - acute: {acute} / chronic: {chronic}");
+            println!(
+                "  {:<LABEL_WIDTH$}{acwr:.1} ({status}) - acute: {acute} / chronic: {chronic}",
+                "ACWR:"
+            );
         }
 
-        // Load balance
         if let Some(ref fb) = self.load_balance_feedback {
-            println!("  Load balance:  {fb}");
+            println!("  {:<LABEL_WIDTH$}{fb}", "Load balance:");
             if let Some(ah) = self.monthly_load_aerobic_high {
                 let min = self.monthly_load_aerobic_high_target_min.unwrap_or(0);
                 let max = self.monthly_load_aerobic_high_target_max.unwrap_or(0);
-                println!("    Aerobic high:  {ah:.0} (target: {min}–{max})");
+                println!(
+                    "    {:<LABEL_WIDTH$}{ah:.0} (target: {min}–{max})",
+                    "Aerobic high:"
+                );
             }
             if let Some(al) = self.monthly_load_aerobic_low {
                 let min = self.monthly_load_aerobic_low_target_min.unwrap_or(0);
                 let max = self.monthly_load_aerobic_low_target_max.unwrap_or(0);
-                println!("    Aerobic low:   {al:.0} (target: {min}–{max})");
+                println!(
+                    "    {:<LABEL_WIDTH$}{al:.0} (target: {min}–{max})",
+                    "Aerobic low:"
+                );
             }
             if let Some(an) = self.monthly_load_anaerobic {
                 let min = self.monthly_load_anaerobic_target_min.unwrap_or(0);
                 let max = self.monthly_load_anaerobic_target_max.unwrap_or(0);
-                println!("    Anaerobic:     {an:>4.0} (target: {min}–{max})");
+                println!(
+                    "    {:<LABEL_WIDTH$}{an:.0} (target: {min}–{max})",
+                    "Anaerobic:"
+                );
             }
         }
 
-        // VO2max
         if let Some(vo2) = self.vo2max {
-            let date_part = self.vo2max_date.as_deref().unwrap_or("");
-            if date_part.is_empty() {
-                println!("  VO2max:        {vo2:.1}");
-            } else {
-                println!("  VO2max:        {vo2:.1} ({date_part})");
-            }
+            let date_part = self
+                .vo2max_date
+                .as_deref()
+                .map(|d| format!(" ({d})"))
+                .unwrap_or_default();
+            println!("  {:<LABEL_WIDTH$}{vo2:.1}{date_part}", "VO2max:");
         }
-
-        println!();
     }
 }
 
@@ -240,30 +244,23 @@ pub async fn status(
     let days = days.unwrap_or(1);
     let end = parse_date(&end_date)?;
 
-    if days == 1 {
-        let path = format!("/metrics-service/metrics/trainingstatus/aggregated/{end_date}");
-        let v: serde_json::Value = client.get_json(&path).await?;
-        let item = training_status_from(&v, &end_date);
-        output.print(&item);
-    } else {
-        let futs: Vec<_> = (0..days)
-            .rev()
-            .map(|i| {
-                let d = end - chrono::Duration::days(i as i64);
-                let ds = d.format("%Y-%m-%d").to_string();
-                let path = format!("/metrics-service/metrics/trainingstatus/aggregated/{ds}");
-                async move {
-                    let v: serde_json::Value = client.get_json(&path).await?;
-                    Ok(training_status_from(&v, &ds)) as Result<TrainingStatus>
-                }
-            })
-            .collect();
-        let items: Vec<TrainingStatus> = futures::future::join_all(futs)
-            .await
-            .into_iter()
-            .collect::<Result<_>>()?;
-        output.print_list(&items, "Training Status");
-    }
+    let futs: Vec<_> = (0..days)
+        .rev()
+        .map(|i| {
+            let d = end - chrono::Duration::days(i as i64);
+            let ds = d.format("%Y-%m-%d").to_string();
+            let path = format!("/metrics-service/metrics/trainingstatus/aggregated/{ds}");
+            async move {
+                let v: serde_json::Value = client.get_json(&path).await?;
+                Ok(training_status_from(&v, &ds)) as Result<TrainingStatus>
+            }
+        })
+        .collect();
+    let items: Vec<TrainingStatus> = futures::future::join_all(futs)
+        .await
+        .into_iter()
+        .collect::<Result<_>>()?;
+    output.print_list(&items, "Training Status");
     Ok(())
 }
 
@@ -411,10 +408,10 @@ impl TrainingReadiness {
             .map(|s| format!("{s}/100"))
             .unwrap_or_else(|| "?".into());
         let level = self.level.as_deref().unwrap_or("?");
-        println!("  {:<15}{} ({})", label, score_str.cyan(), level);
+        println!("  {:<LABEL_WIDTH$}{} ({})", label, score_str.cyan(), level);
 
         if let Some(ref fb) = self.feedback {
-            println!("  {:<15}{fb}", "");
+            println!("  {:<LABEL_WIDTH$}{fb}", "");
         }
 
         let mut parts = Vec::new();
@@ -427,7 +424,7 @@ impl TrainingReadiness {
             parts.push(format!("HRV 7d: {hrv}ms"));
         }
         if !parts.is_empty() {
-            println!("  {:<15}{}", "", parts.join("  "));
+            println!("  {:<LABEL_WIDTH$}{}", "", parts.join("  "));
         }
 
         println!("  Factors:");
@@ -452,13 +449,12 @@ impl HumanReadable for TrainingReadiness {
     fn print_human(&self) {
         // Standalone printing (not used directly, but required by trait)
         self.print_section("Readiness");
-        println!();
     }
 }
 
 impl HumanReadable for DailyReadiness {
     fn print_human(&self) {
-        println!("{}  {}", self.date.bold(), "Training Readiness".dimmed());
+        println!("{}", self.date.bold());
 
         if let Some(ref m) = self.morning {
             m.print_section("Morning");
@@ -481,15 +477,13 @@ impl HumanReadable for DailyReadiness {
         if self.morning.is_none() && self.post_activity.is_none() && self.latest.is_none() {
             println!("  No readiness data");
         }
-
-        println!();
     }
 }
 
 fn print_factor(name: &str, score: Option<i64>, feedback: Option<&str>) {
     if let Some(s) = score {
         let fb = feedback.unwrap_or("?");
-        println!("    {name:<15}{s:>3}% ({fb})");
+        println!("    {name:<LABEL_WIDTH$}{s:>3}% ({fb})");
     }
 }
 
@@ -503,30 +497,23 @@ pub async fn readiness(
     let days = days.unwrap_or(1);
     let end = parse_date(&end_date)?;
 
-    if days == 1 {
-        let path = format!("/metrics-service/metrics/trainingreadiness/{end_date}");
-        let v: serde_json::Value = client.get_json(&path).await?;
-        let item = daily_readiness_from(&v, &end_date);
-        output.print(&item);
-    } else {
-        let futs: Vec<_> = (0..days)
-            .rev()
-            .map(|i| {
-                let d = end - chrono::Duration::days(i as i64);
-                let ds = d.format("%Y-%m-%d").to_string();
-                let path = format!("/metrics-service/metrics/trainingreadiness/{ds}");
-                async move {
-                    let v: serde_json::Value = client.get_json(&path).await?;
-                    Ok(daily_readiness_from(&v, &ds)) as Result<DailyReadiness>
-                }
-            })
-            .collect();
-        let items: Vec<DailyReadiness> = futures::future::join_all(futs)
-            .await
-            .into_iter()
-            .collect::<Result<_>>()?;
-        output.print_list(&items, "Training Readiness");
-    }
+    let futs: Vec<_> = (0..days)
+        .rev()
+        .map(|i| {
+            let d = end - chrono::Duration::days(i as i64);
+            let ds = d.format("%Y-%m-%d").to_string();
+            let path = format!("/metrics-service/metrics/trainingreadiness/{ds}");
+            async move {
+                let v: serde_json::Value = client.get_json(&path).await?;
+                Ok(daily_readiness_from(&v, &ds)) as Result<DailyReadiness>
+            }
+        })
+        .collect();
+    let items: Vec<DailyReadiness> = futures::future::join_all(futs)
+        .await
+        .into_iter()
+        .collect::<Result<_>>()?;
+    output.print_list(&items, "Training Readiness");
     Ok(())
 }
 
@@ -537,10 +524,9 @@ pub async fn readiness(
 #[derive(Debug, Serialize)]
 pub struct TrainingScore {
     pub date: String,
+    /// VO2max — precise value when available, else the integer-rounded value.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vo2max: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub vo2max_precise: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fitness_age: Option<f64>,
 }
@@ -553,32 +539,24 @@ fn training_score_from(v: &serde_json::Value) -> TrainingScore {
             .or(v["calendarDate"].as_str())
             .unwrap_or("")
             .to_string(),
-        vo2max: g["vo2MaxValue"].as_f64(),
-        vo2max_precise: g["vo2MaxPreciseValue"].as_f64(),
+        vo2max: g["vo2MaxPreciseValue"]
+            .as_f64()
+            .or(g["vo2MaxValue"].as_f64()),
         fitness_age: g["fitnessAge"].as_f64(),
     }
 }
 
 impl HumanReadable for TrainingScore {
     fn print_human(&self) {
+        println!("{}", self.date.bold());
         let vo2 = self
             .vo2max
             .map(|v| format!("{v:.1}"))
             .unwrap_or_else(|| "–".into());
-        let precise = self
-            .vo2max_precise
-            .map(|v| format!(" (precise: {v:.2})"))
-            .unwrap_or_default();
-        let age = self
-            .fitness_age
-            .map(|v| format!("  fitness age: {v:.0}"))
-            .unwrap_or_default();
-        println!(
-            "{}  VO2max: {}{}{age}",
-            self.date.bold(),
-            vo2.cyan(),
-            precise
-        );
+        println!("  {:<LABEL_WIDTH$}{}", "VO2max:", vo2.cyan());
+        if let Some(age) = self.fitness_age {
+            println!("  {:<LABEL_WIDTH$}{age:.0}", "Fitness age:");
+        }
     }
 }
 
@@ -601,11 +579,7 @@ pub async fn scores(
         .map(|arr| arr.iter().map(training_score_from).collect())
         .unwrap_or_default();
 
-    if items.len() == 1 {
-        output.print(&items[0]);
-    } else {
-        output.print_list(&items, "Training Scores (VO2max)");
-    }
+    output.print_list(&items, "Training Scores (VO2max)");
     Ok(())
 }
 
@@ -672,23 +646,22 @@ fn race_predictions_from(v: &serde_json::Value) -> RacePredictions {
 impl HumanReadable for RacePredictions {
     fn print_human(&self) {
         if self.date.is_empty() {
-            println!("{}", "Race Predictions".bold());
+            println!("{}", "(no date)".dimmed());
         } else {
-            println!("{}  {}", self.date.bold(), "Race Predictions".dimmed());
+            println!("{}", self.date.bold());
         }
-        print_race_line("5K", self.time_5k_seconds, self.pace_5k.as_deref());
-        print_race_line("10K", self.time_10k_seconds, self.pace_10k.as_deref());
+        print_race_line("5K:", self.time_5k_seconds, self.pace_5k.as_deref());
+        print_race_line("10K:", self.time_10k_seconds, self.pace_10k.as_deref());
         print_race_line(
-            "Half Marathon",
+            "Half Marathon:",
             self.time_half_marathon_seconds,
             self.pace_half_marathon.as_deref(),
         );
         print_race_line(
-            "Marathon",
+            "Marathon:",
             self.time_marathon_seconds,
             self.pace_marathon.as_deref(),
         );
-        println!();
     }
 }
 
@@ -696,42 +669,34 @@ fn print_race_line(name: &str, secs: Option<f64>, pace: Option<&str>) {
     if let Some(s) = secs {
         let time = fmt_duration(s);
         let pace_str = pace.map(|p| format!(" ({p} /km)")).unwrap_or_default();
-        println!("  {name:<15}{}{pace_str}", time.cyan());
+        println!("  {name:<LABEL_WIDTH$}{}{pace_str}", time.cyan());
     }
 }
 
 pub async fn race_predictions(
     client: &GarminClient,
     output: &Output,
-    from: Option<&str>,
-    to: Option<&str>,
+    date: Option<&str>,
+    days: Option<u32>,
 ) -> Result<()> {
     let display_name = client.display_name().await?;
+    let end_date = date.map(String::from).unwrap_or_else(today);
+    let end = parse_date(&end_date)?;
+    let days = days.unwrap_or(1);
+    let start = end - chrono::Duration::days(days as i64 - 1);
+    let start_str = start.format("%Y-%m-%d").to_string();
 
-    if let Some(from_str) = from {
-        let to_str = to.map(String::from).unwrap_or_else(today);
-        let path = format!(
-            "/metrics-service/metrics/racepredictions/daily/{display_name}?fromCalendarDate={from_str}&toCalendarDate={to_str}"
-        );
-        let v: serde_json::Value = client.get_json(&path).await?;
+    let path = format!(
+        "/metrics-service/metrics/racepredictions/daily/{display_name}?fromCalendarDate={start_str}&toCalendarDate={end_date}"
+    );
+    let v: serde_json::Value = client.get_json(&path).await?;
 
-        let items: Vec<RacePredictions> = v
-            .as_array()
-            .map(|arr| arr.iter().map(race_predictions_from).collect())
-            .unwrap_or_default();
+    let items: Vec<RacePredictions> = v
+        .as_array()
+        .map(|arr| arr.iter().map(race_predictions_from).collect())
+        .unwrap_or_default();
 
-        if items.len() == 1 {
-            output.print(&items[0]);
-        } else {
-            output.print_list(&items, "Race Predictions");
-        }
-    } else {
-        let path = format!("/metrics-service/metrics/racepredictions/latest/{display_name}");
-        let v: serde_json::Value = client.get_json(&path).await?;
-        let item = race_predictions_from(&v);
-        output.print(&item);
-    }
-
+    output.print_list(&items, "Race Predictions");
     Ok(())
 }
 
@@ -764,17 +729,16 @@ fn endurance_score_from(v: &serde_json::Value) -> EnduranceScore {
 
 impl HumanReadable for EnduranceScore {
     fn print_human(&self) {
-        println!("{}  {}", self.date.bold(), "Endurance Score".dimmed());
+        println!("{}", self.date.bold());
         let score = self
             .score
             .map(|s| s.to_string())
             .unwrap_or_else(|| "\u{2013}".into());
         let class = self.classification.as_deref().unwrap_or("?");
-        println!("  {:<14}{} ({})", "Score:", score.cyan(), class);
+        println!("  {:<LABEL_WIDTH$}{} ({})", "Score:", score.cyan(), class);
         if let Some(ref fb) = self.feedback {
-            println!("  {:<14}{fb}", "Feedback:");
+            println!("  {:<LABEL_WIDTH$}{fb}", "Feedback:");
         }
-        println!();
     }
 }
 
@@ -788,30 +752,23 @@ pub async fn endurance_score(
     let days = days.unwrap_or(1);
     let end = parse_date(&end_date)?;
 
-    if days == 1 {
-        let path = format!("/metrics-service/metrics/endurancescore?calendarDate={end_date}");
-        let v: serde_json::Value = client.get_json(&path).await?;
-        let item = endurance_score_from(&v);
-        output.print(&item);
-    } else {
-        let futs: Vec<_> = (0..days)
-            .rev()
-            .map(|i| {
-                let d = end - chrono::Duration::days(i as i64);
-                let ds = d.format("%Y-%m-%d").to_string();
-                let path = format!("/metrics-service/metrics/endurancescore?calendarDate={ds}");
-                async move {
-                    let v: serde_json::Value = client.get_json(&path).await?;
-                    Ok(endurance_score_from(&v)) as Result<EnduranceScore>
-                }
-            })
-            .collect();
-        let items: Vec<EnduranceScore> = futures::future::join_all(futs)
-            .await
-            .into_iter()
-            .collect::<Result<_>>()?;
-        output.print_list(&items, "Endurance Score");
-    }
+    let futs: Vec<_> = (0..days)
+        .rev()
+        .map(|i| {
+            let d = end - chrono::Duration::days(i as i64);
+            let ds = d.format("%Y-%m-%d").to_string();
+            let path = format!("/metrics-service/metrics/endurancescore?calendarDate={ds}");
+            async move {
+                let v: serde_json::Value = client.get_json(&path).await?;
+                Ok(endurance_score_from(&v)) as Result<EnduranceScore>
+            }
+        })
+        .collect();
+    let items: Vec<EnduranceScore> = futures::future::join_all(futs)
+        .await
+        .into_iter()
+        .collect::<Result<_>>()?;
+    output.print_list(&items, "Endurance Score");
     Ok(())
 }
 
@@ -844,20 +801,19 @@ fn hill_score_from(v: &serde_json::Value) -> HillScore {
 
 impl HumanReadable for HillScore {
     fn print_human(&self) {
-        println!("{}  {}", self.date.bold(), "Hill Score".dimmed());
+        println!("{}", self.date.bold());
         if let Some(v) = self.overall {
-            println!("  {:<14}{}", "Overall:", v.to_string().cyan());
+            println!("  {:<LABEL_WIDTH$}{}", "Overall:", v.to_string().cyan());
         }
         if let Some(v) = self.strength {
-            println!("  {:<14}{v}", "Strength:");
+            println!("  {:<LABEL_WIDTH$}{v}", "Strength:");
         }
         if let Some(v) = self.endurance {
-            println!("  {:<14}{v}", "Endurance:");
+            println!("  {:<LABEL_WIDTH$}{v}", "Endurance:");
         }
         if let Some(v) = self.vo2max {
-            println!("  {:<14}{v:.1}", "VO2max:");
+            println!("  {:<LABEL_WIDTH$}{v:.1}", "VO2max:");
         }
-        println!();
     }
 }
 
@@ -871,30 +827,23 @@ pub async fn hill_score(
     let days = days.unwrap_or(1);
     let end = parse_date(&end_date)?;
 
-    if days == 1 {
-        let path = format!("/metrics-service/metrics/hillscore?calendarDate={end_date}");
-        let v: serde_json::Value = client.get_json(&path).await?;
-        let item = hill_score_from(&v);
-        output.print(&item);
-    } else {
-        let futs: Vec<_> = (0..days)
-            .rev()
-            .map(|i| {
-                let d = end - chrono::Duration::days(i as i64);
-                let ds = d.format("%Y-%m-%d").to_string();
-                let path = format!("/metrics-service/metrics/hillscore?calendarDate={ds}");
-                async move {
-                    let v: serde_json::Value = client.get_json(&path).await?;
-                    Ok(hill_score_from(&v)) as Result<HillScore>
-                }
-            })
-            .collect();
-        let items: Vec<HillScore> = futures::future::join_all(futs)
-            .await
-            .into_iter()
-            .collect::<Result<_>>()?;
-        output.print_list(&items, "Hill Score");
-    }
+    let futs: Vec<_> = (0..days)
+        .rev()
+        .map(|i| {
+            let d = end - chrono::Duration::days(i as i64);
+            let ds = d.format("%Y-%m-%d").to_string();
+            let path = format!("/metrics-service/metrics/hillscore?calendarDate={ds}");
+            async move {
+                let v: serde_json::Value = client.get_json(&path).await?;
+                Ok(hill_score_from(&v)) as Result<HillScore>
+            }
+        })
+        .collect();
+    let items: Vec<HillScore> = futures::future::join_all(futs)
+        .await
+        .into_iter()
+        .collect::<Result<_>>()?;
+    output.print_list(&items, "Hill Score");
     Ok(())
 }
 
@@ -936,7 +885,7 @@ fn fitness_age_from(v: &serde_json::Value, date: &str) -> FitnessAge {
 
 impl HumanReadable for FitnessAge {
     fn print_human(&self) {
-        println!("{}  {}", self.date.bold(), "Fitness Age".dimmed());
+        println!("{}", self.date.bold());
         let fa = self
             .fitness_age
             .map(|v| format!("{v:.0}"))
@@ -945,32 +894,56 @@ impl HumanReadable for FitnessAge {
             .chronological_age
             .map(|v| v.to_string())
             .unwrap_or_else(|| "?".into());
-        println!("  {:<16}{} (chronological: {ca})", "Age:", fa.cyan());
+        println!(
+            "  {:<LABEL_WIDTH$}{} (chronological: {ca})",
+            "Age:",
+            fa.cyan()
+        );
         if let Some(v) = self.achievable_fitness_age {
-            println!("  {:<16}{v:.0}", "Achievable:");
+            println!("  {:<LABEL_WIDTH$}{v:.0}", "Achievable:");
         }
         if let Some(v) = self.bmi {
-            println!("  {:<16}{v:.1}", "BMI:");
+            println!("  {:<LABEL_WIDTH$}{v:.1}", "BMI:");
         }
         if let Some(v) = self.resting_heart_rate {
-            println!("  {:<16}{v} bpm", "Resting HR:");
+            println!("  {:<LABEL_WIDTH$}{v} bpm", "Resting HR:");
         }
         if let Some(v) = self.vigorous_days_avg {
-            println!("  {:<16}{v:.1}", "Vigorous d/wk:");
+            println!("  {:<LABEL_WIDTH$}{v:.1}", "Vigorous d/wk:");
         }
         if let Some(v) = self.vigorous_minutes_avg {
-            println!("  {:<16}{v:.0}", "Vigorous m/d:");
+            println!("  {:<LABEL_WIDTH$}{v:.0}", "Vigorous m/d:");
         }
-        println!();
     }
 }
 
-pub async fn fitness_age(client: &GarminClient, output: &Output, date: Option<&str>) -> Result<()> {
-    let date_str = date.map(String::from).unwrap_or_else(today);
-    let path = format!("/fitnessage-service/fitnessage/{date_str}");
-    let v: serde_json::Value = client.get_json(&path).await?;
-    let item = fitness_age_from(&v, &date_str);
-    output.print(&item);
+pub async fn fitness_age(
+    client: &GarminClient,
+    output: &Output,
+    date: Option<&str>,
+    days: Option<u32>,
+) -> Result<()> {
+    let end_date = date.map(String::from).unwrap_or_else(today);
+    let days = days.unwrap_or(1);
+    let end = parse_date(&end_date)?;
+
+    let futs: Vec<_> = (0..days)
+        .rev()
+        .map(|i| {
+            let d = end - chrono::Duration::days(i as i64);
+            let ds = d.format("%Y-%m-%d").to_string();
+            let path = format!("/fitnessage-service/fitnessage/{ds}");
+            async move {
+                let v: serde_json::Value = client.get_json(&path).await?;
+                Ok(fitness_age_from(&v, &ds)) as Result<FitnessAge>
+            }
+        })
+        .collect();
+    let items: Vec<FitnessAge> = futures::future::join_all(futs)
+        .await
+        .into_iter()
+        .collect::<Result<_>>()?;
+    output.print_list(&items, "Fitness Age");
     Ok(())
 }
 
@@ -980,8 +953,7 @@ pub async fn fitness_age(client: &GarminClient, output: &Output, date: Option<&s
 
 #[derive(Debug, Serialize)]
 pub struct LactateThreshold {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub date: Option<String>,
+    pub date: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub heart_rate: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -990,78 +962,117 @@ pub struct LactateThreshold {
     pub pace: Option<String>,
 }
 
-fn lactate_threshold_from(v: &serde_json::Value) -> LactateThreshold {
-    // Response is an array with potentially separate entries for HR and speed.
-    // Garmin splits them: one entry has hearRate, another has speed. Merge all.
-    let entries = v.as_array();
+/// Garmin's stats endpoint returns LT speed ~10x too low (e.g. 0.386 instead of 3.86 m/s).
+/// Correct if value is implausibly small (< 1 m/s is walking speed).
+fn correct_lt_speed(s: f64) -> f64 {
+    if s > 0.0 && s < 1.0 { s * 10.0 } else { s }
+}
 
-    let mut hr: Option<i64> = None;
-    let mut speed: Option<f64> = None;
-    let mut date: Option<String> = None;
-
-    if let Some(arr) = entries {
-        for e in arr {
-            if hr.is_none() {
-                hr = e["hearRate"].as_i64().or(e["heartRate"].as_i64());
-            }
-            if speed.is_none() {
-                speed = e["speed"].as_f64().filter(|&s| s > 0.0);
-            }
-            if date.is_none() {
-                date = e["startTimestampLocal"]
-                    .as_str()
-                    .or(e["calendarDate"].as_str())
-                    .map(|s| s.chars().take(10).collect());
-            }
-        }
-    } else if v.is_object() {
-        hr = v["hearRate"].as_i64().or(v["heartRate"].as_i64());
-        speed = v["speed"].as_f64().filter(|&s| s > 0.0);
-        date = v["startTimestampLocal"]
-            .as_str()
-            .or(v["calendarDate"].as_str())
-            .map(|s| s.chars().take(10).collect());
-    }
-
-    // Garmin API returns LT speed ~10x too low (e.g. 0.386 instead of 3.86 m/s).
-    // Correct if value is implausibly small (< 1 m/s is walking speed).
-    speed = speed.map(|s| if s < 1.0 { s * 10.0 } else { s });
-
-    let pace = speed.map(|s| {
-        let pace_secs = 1000.0 / s;
-        let m = pace_secs as u64 / 60;
-        let sec = pace_secs as u64 % 60;
-        format!("{m}:{sec:02}")
-    });
-
-    LactateThreshold {
-        date,
-        heart_rate: hr,
-        speed_meters_per_second: speed,
-        pace,
-    }
+fn lt_pace(speed: f64) -> String {
+    let pace_secs = 1000.0 / speed;
+    let m = pace_secs as u64 / 60;
+    let sec = pace_secs as u64 % 60;
+    format!("{m}:{sec:02}")
 }
 
 impl HumanReadable for LactateThreshold {
     fn print_human(&self) {
-        let date = self.date.as_deref().unwrap_or("?");
-        println!("{}  {}", date.bold(), "Lactate Threshold".dimmed());
-        if let Some(hr) = self.heart_rate {
-            println!("  {:<14}{} bpm", "Heart rate:", hr);
-        }
-        if let Some(ref pace) = self.pace {
-            println!("  {:<14}{pace} /km", "Speed:");
-        }
-        println!();
+        println!("{}", self.date.bold());
+        let hr = self
+            .heart_rate
+            .map(|v| format!("{v} bpm"))
+            .unwrap_or_else(|| "–".into());
+        let pace = self
+            .pace
+            .as_deref()
+            .map(|p| format!("{p}/km"))
+            .unwrap_or_else(|| "–".into());
+        println!("  {:<LABEL_WIDTH$}{}", "Heart rate:", hr.cyan());
+        println!("  {:<LABEL_WIDTH$}{}", "Pace:", pace.cyan());
     }
 }
 
-pub async fn lactate_threshold(client: &GarminClient, output: &Output) -> Result<()> {
-    let v: serde_json::Value = client
-        .get_json("/biometric-service/biometric/latestLactateThreshold")
-        .await?;
-    let item = lactate_threshold_from(&v);
-    output.print(&item);
+pub async fn lactate_threshold(
+    client: &GarminClient,
+    output: &Output,
+    date: Option<&str>,
+    days: Option<u32>,
+) -> Result<()> {
+    let end_date = date.map(String::from).unwrap_or_else(today);
+    let end = parse_date(&end_date)?;
+    let days = days.unwrap_or(7);
+    let start = end - chrono::Duration::days(days as i64 - 1);
+    let start_str = start.format("%Y-%m-%d").to_string();
+
+    // Garmin's stats endpoint only returns rows on dates when LT changed, and
+    // caps ranges at 366 days. Use the widest allowed lookback so we can
+    // carry-forward the latest known value when the user's window is empty.
+    let lookback = end - chrono::Duration::days(365);
+    let lookback_str = lookback.format("%Y-%m-%d").to_string();
+
+    let hr_path = format!(
+        "/biometric-service/stats/lactateThresholdHeartRate/range/{lookback_str}/{end_date}?aggregation=daily&aggregationStrategy=LATEST&sport=RUNNING"
+    );
+    let speed_path = format!(
+        "/biometric-service/stats/lactateThresholdSpeed/range/{lookback_str}/{end_date}?aggregation=daily&aggregationStrategy=LATEST&sport=RUNNING"
+    );
+
+    let (hr_v, speed_v) = tokio::try_join!(
+        client.get_json::<serde_json::Value>(&hr_path),
+        client.get_json::<serde_json::Value>(&speed_path),
+    )?;
+
+    // Merge HR and speed change-point series by their `updatedDate`.
+    // HR and speed update independently, so we keyed-merge them.
+    type LtRow = (Option<i64>, Option<f64>);
+    let mut by_date: std::collections::BTreeMap<String, LtRow> = std::collections::BTreeMap::new();
+
+    let row_date = |e: &serde_json::Value| -> Option<String> {
+        e["updatedDate"]
+            .as_str()
+            .or(e["from"].as_str())
+            .map(|s| s.chars().take(10).collect())
+    };
+
+    if let Some(arr) = hr_v.as_array() {
+        for e in arr {
+            if let (Some(d), Some(v)) = (row_date(e), e["value"].as_f64()) {
+                by_date.entry(d).or_default().0 = Some(v as i64);
+            }
+        }
+    }
+    if let Some(arr) = speed_v.as_array() {
+        for e in arr {
+            if let (Some(d), Some(v)) = (row_date(e), e["value"].as_f64()) {
+                by_date.entry(d).or_default().1 = Some(correct_lt_speed(v));
+            }
+        }
+    }
+
+    // Split into in-window change points and prior history. If the window has
+    // changes, return them. Otherwise fall back to the most recent prior
+    // change point so "current LT" is always reported.
+    let (prior, in_window): (Vec<_>, Vec<_>) = by_date
+        .into_iter()
+        .partition(|(d, _)| d.as_str() < start_str.as_str());
+
+    let rows: Vec<(String, LtRow)> = if in_window.is_empty() {
+        prior.into_iter().last().into_iter().collect()
+    } else {
+        in_window
+    };
+
+    let items: Vec<LactateThreshold> = rows
+        .into_iter()
+        .map(|(date, (hr, speed))| LactateThreshold {
+            date,
+            heart_rate: hr,
+            speed_meters_per_second: speed,
+            pace: speed.map(lt_pace),
+        })
+        .collect();
+
+    output.print_list(&items, "Lactate Threshold");
     Ok(())
 }
 
@@ -1083,10 +1094,11 @@ pub struct HrZoneBoundary {
 impl HumanReadable for HrZoneBoundary {
     fn print_human(&self) {
         let range = match self.max_bpm {
-            Some(max) => format!("{}-{} bpm", self.min_bpm, max),
+            Some(max) => format!("{}\u{2013}{} bpm", self.min_bpm, max),
             None => format!("{}+ bpm", self.min_bpm),
         };
-        println!("  Zone {}  {}", format!("{}", self.zone).cyan(), range);
+        let label = format!("Zone {}", self.zone);
+        println!("  {:<LABEL_WIDTH$}{}", label, range.cyan());
     }
 }
 
@@ -1128,6 +1140,6 @@ pub async fn zones(client: &GarminClient, output: &Output) -> Result<()> {
         });
     }
 
-    output.print_list(&boundaries, "HR Zones");
+    output.print_table(&boundaries, "HR Zones");
     Ok(())
 }

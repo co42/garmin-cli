@@ -1,6 +1,6 @@
 use crate::client::GarminClient;
 use crate::error::Result;
-use crate::output::{HumanReadable, Output};
+use crate::output::{HumanReadable, LABEL_WIDTH, Output};
 use chrono::{Datelike, NaiveDate};
 use colored::Colorize;
 use serde::Serialize;
@@ -55,27 +55,36 @@ fn calendar_item_from_json(v: &serde_json::Value) -> CalendarItem {
 
 impl HumanReadable for CalendarItem {
     fn print_human(&self) {
+        let date = self
+            .date
+            .as_deref()
+            .map(|d| &d[..d.len().min(10)])
+            .unwrap_or("(no date)");
         let title = self.title.as_deref().unwrap_or("\u{2014}");
-        let date = self.date.as_deref().unwrap_or("");
-        let ref_tag = if let Some(uuid) = &self.workout_uuid {
-            format!("[{} {}]", "coach".magenta(), uuid.dimmed())
+        println!("{}  {}", date.bold(), title);
+        let (kind, id_line) = if let Some(uuid) = &self.workout_uuid {
+            ("coach", Some(uuid.clone()))
         } else if let Some(id) = self.workout_id {
-            format!("[{} {}]", "workout".cyan(), id.to_string().dimmed())
+            ("workout", Some(id.to_string()))
         } else if self.item_type == "activity" {
-            format!("[{} {}]", "activity".cyan(), self.id.to_string().dimmed())
+            ("activity", Some(self.id.to_string()))
         } else {
-            let kind = self.activity_type.as_deref().unwrap_or(&self.item_type);
-            format!("[{}]", kind.cyan())
+            (
+                self.activity_type.as_deref().unwrap_or(&self.item_type),
+                None,
+            )
         };
-        print!("{} {} {ref_tag}", date.dimmed(), title.bold());
+        println!("  {:<LABEL_WIDTH$}{}", "Type:", kind.cyan());
+        if let Some(id) = id_line {
+            println!("  {:<LABEL_WIDTH$}{}", "Ref:", id.dimmed());
+        }
         if let Some(dist) = self.distance_meters {
-            print!("  {:.2} km", dist / 1000.0);
+            println!("  {:<LABEL_WIDTH$}{:.2} km", "Distance:", dist / 1000.0);
         }
         if let Some(dur) = self.duration_seconds {
             let mins = (dur / 60.0).round() as u32;
-            print!("  {mins} min");
+            println!("  {:<LABEL_WIDTH$}{mins} min", "Duration:");
         }
-        println!();
     }
 }
 

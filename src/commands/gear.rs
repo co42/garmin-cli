@@ -1,6 +1,6 @@
 use crate::client::GarminClient;
 use crate::error::Result;
-use crate::output::{HumanReadable, Output};
+use crate::output::{HumanReadable, LABEL_WIDTH, Output};
 use colored::Colorize;
 use serde::Serialize;
 
@@ -65,33 +65,33 @@ fn gear_from_json(v: &serde_json::Value) -> GearItem {
 impl HumanReadable for GearItem {
     fn print_human(&self) {
         let retired = self.status.as_deref() == Some("retired");
-        // UUID + Name
-        print!("{} ", self.uuid.dimmed());
         if retired {
-            print!(
+            println!(
                 "{} {}",
                 self.display_name.bold().dimmed(),
                 "(retired)".dimmed()
             );
         } else {
-            print!("{}", self.display_name.bold());
+            println!("{}", self.display_name.bold());
         }
-        // Distance / max
+        println!("  {:<LABEL_WIDTH$}{}", "UUID:", self.uuid.dimmed());
         match (self.distance_meters, self.max_distance_meters) {
-            (Some(d), Some(m)) if m > 0.0 => print!("  {:.0}/{:.0} km", d / 1000.0, m / 1000.0),
-            (Some(d), _) => print!("  {:.0} km", d / 1000.0),
+            (Some(d), Some(m)) if m > 0.0 => println!(
+                "  {:<LABEL_WIDTH$}{:.0} / {:.0} km",
+                "Distance:",
+                d / 1000.0,
+                m / 1000.0
+            ),
+            (Some(d), _) => println!("  {:<LABEL_WIDTH$}{:.0} km", "Distance:", d / 1000.0),
             _ => {}
         }
-        // Activities
         if let Some(count) = self.activities {
-            print!("  {} runs", count);
+            println!("  {:<LABEL_WIDTH$}{count}", "Activities:");
         }
-        // Since
         if let Some(ref date) = self.date_begin {
             let short = &date[..date.len().min(10)];
-            print!("  {}", format!("since {short}").dimmed());
+            println!("  {:<LABEL_WIDTH$}{short}", "Since:");
         }
-        println!();
     }
 }
 
@@ -163,19 +163,19 @@ fn gear_stats_from_json(uuid: &str, v: &serde_json::Value) -> GearStats {
 impl HumanReadable for GearStats {
     fn print_human(&self) {
         println!("{}", "Gear Stats".bold());
-        println!("  UUID: {}", self.uuid.dimmed());
+        println!("{}", "\u{2500}".repeat(40).dimmed());
+        println!("  {:<LABEL_WIDTH$}{}", "UUID:", self.uuid.dimmed());
         if let Some(dist) = self.total_distance_meters {
-            println!("  Total distance: {:.1} km", dist / 1000.0);
+            println!("  {:<LABEL_WIDTH$}{:.1} km", "Distance:", dist / 1000.0);
         }
         if let Some(count) = self.total_activities {
-            println!("  Total activities: {count}");
+            println!("  {:<LABEL_WIDTH$}{count}", "Activities:");
         }
         if let Some(dur) = self.total_duration_seconds {
             let hours = (dur / 3600.0).floor() as u32;
             let mins = ((dur % 3600.0) / 60.0).round() as u32;
-            println!("  Total duration: {hours}h {mins}min");
+            println!("  {:<LABEL_WIDTH$}{hours}h {mins}min", "Duration:");
         }
-        println!();
     }
 }
 

@@ -1,6 +1,6 @@
 use crate::client::GarminClient;
 use crate::error::Result;
-use crate::output::{HumanReadable, Output};
+use crate::output::{HumanReadable, LABEL_WIDTH, Output};
 use colored::Colorize;
 use serde::Serialize;
 
@@ -73,44 +73,31 @@ impl HumanReadable for CoachWorkout {
     fn print_human(&self) {
         let name = self.name.as_deref().unwrap_or("Rest");
         let priority = self.priority_type.as_deref().unwrap_or("");
-        let alt_tag = match priority {
-            "REQUIRED" => "",
-            _ => " [alt]",
-        };
-
-        let phrase = self
-            .workout_phrase
-            .as_deref()
-            .map(humanize_phrase)
-            .unwrap_or("");
-
+        let alt = if priority == "REQUIRED" { "" } else { " (alt)" };
+        println!("{}{}", name.bold(), alt.dimmed());
+        println!("  {:<LABEL_WIDTH$}{}", "UUID:", self.uuid.dimmed());
+        if let Some(phrase) = self.workout_phrase.as_deref().map(humanize_phrase)
+            && !phrase.is_empty()
+        {
+            println!("  {:<LABEL_WIDTH$}{}", "Type:", phrase.cyan());
+        }
         let te = format_te(
             self.estimated_training_effect,
             self.estimated_anaerobic_training_effect,
         );
-
-        // Single line: UUID  Name [phrase] TE  description  duration  distance
-        print!("{} {}", self.uuid.dimmed(), name.bold());
-        if !alt_tag.is_empty() {
-            print!("{}", alt_tag.dimmed());
-        }
-        if !phrase.is_empty() && phrase != "rest" {
-            print!(" [{}]", phrase.cyan());
-        }
         if !te.is_empty() {
-            print!("  {te}");
+            println!("  {:<LABEL_WIDTH$}{te}", "TE:");
         }
         if let Some(ref desc) = self.description {
-            print!("  {}", desc.dimmed());
+            println!("  {:<LABEL_WIDTH$}{desc}", "Target:");
         }
         if let Some(dur) = self.estimated_duration_seconds {
             let mins = (dur / 60.0).round() as u32;
-            print!("  {mins} min");
+            println!("  {:<LABEL_WIDTH$}{mins} min", "Duration:");
         }
         if let Some(dist) = self.estimated_distance_meters {
-            print!("  {:.1} km", dist / 1000.0);
+            println!("  {:<LABEL_WIDTH$}{:.1} km", "Distance:", dist / 1000.0);
         }
-        println!();
     }
 }
 
@@ -156,27 +143,27 @@ fn coach_plan_from_json(v: &serde_json::Value) -> CoachPlan {
 impl HumanReadable for CoachPlan {
     fn print_human(&self) {
         println!("{}", self.name.bold());
-        println!("  ID: {}", self.id);
+        println!("{}", "\u{2500}".repeat(40).dimmed());
+        println!("  {:<LABEL_WIDTH$}{}", "ID:", self.id);
         if let Some(ref level) = self.training_level {
-            println!("  Level: {}", level.cyan());
+            println!("  {:<LABEL_WIDTH$}{}", "Level:", level.cyan());
         }
         if let Some(ref version) = self.training_version {
-            println!("  Target: {version}");
+            println!("  {:<LABEL_WIDTH$}{version}", "Target:");
         }
         if let (Some(start), Some(end)) = (&self.start_date, &self.end_date) {
-            print!("  {start} \u{2192} {end}");
-            if let Some(weeks) = self.duration_weeks {
-                print!("  ({weeks} weeks)");
-            }
-            println!();
+            let weeks = self
+                .duration_weeks
+                .map(|w| format!(" ({w} weeks)"))
+                .unwrap_or_default();
+            println!("  {:<LABEL_WIDTH$}{start} \u{2192} {end}{weeks}", "Range:");
         }
         if let Some(avg) = self.avg_weekly_workouts {
-            println!("  {avg} workouts/week");
+            println!("  {:<LABEL_WIDTH$}{avg}", "Workouts/wk:");
         }
         if let Some(ref status) = self.status {
-            println!("  Status: {status}");
+            println!("  {:<LABEL_WIDTH$}{status}", "Status:");
         }
-        println!();
     }
 }
 
@@ -218,7 +205,13 @@ pub async fn list(client: &GarminClient, output: &Output, all: bool, verbose: bo
 }
 
 fn print_coach_list_verbose(raw: &[serde_json::Value], workouts: &[CoachWorkout]) {
-    for (item, workout) in raw.iter().zip(workouts.iter()) {
+    let title = "Coach Workouts";
+    println!("{}", title.bold());
+    println!("{}", "\u{2500}".repeat(40).dimmed());
+    for (i, (item, workout)) in raw.iter().zip(workouts.iter()).enumerate() {
+        if i > 0 {
+            println!();
+        }
         workout.print_human();
         if let Some(segments) = item["workoutSegments"].as_array() {
             for seg in segments {
@@ -227,9 +220,10 @@ fn print_coach_list_verbose(raw: &[serde_json::Value], workouts: &[CoachWorkout]
                 }
             }
         }
-        println!();
     }
-    println!("{} items", workouts.len());
+    let n = workouts.len();
+    println!();
+    println!("{n} item{}", if n == 1 { "" } else { "s" });
 }
 
 pub async fn get(client: &GarminClient, output: &Output, uuid: &str) -> Result<()> {

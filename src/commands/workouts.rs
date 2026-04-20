@@ -1,6 +1,6 @@
 use crate::client::GarminClient;
 use crate::error::Result;
-use crate::output::{HumanReadable, Output};
+use crate::output::{HumanReadable, LABEL_WIDTH, Output};
 use colored::Colorize;
 use serde::Serialize;
 
@@ -52,29 +52,26 @@ fn workout_from_json(v: &serde_json::Value) -> Workout {
 
 impl HumanReadable for Workout {
     fn print_human(&self) {
-        let sport = self.sport_type.as_deref().unwrap_or("unknown");
-        let date = self.created_date.as_deref().unwrap_or("");
-        // Single line: ID  date  Name [sport]  description  duration  distance
-        print!(
-            "{} {} {} [{}]",
-            self.id.to_string().dimmed(),
-            date.dimmed(),
-            self.name.bold(),
-            sport.cyan()
-        );
+        println!("{}", self.name.bold());
+        println!("  {:<LABEL_WIDTH$}{}", "ID:", self.id.to_string().dimmed());
+        if let Some(ref sport) = self.sport_type {
+            println!("  {:<LABEL_WIDTH$}{}", "Sport:", sport.cyan());
+        }
+        if let Some(ref date) = self.created_date {
+            println!("  {:<LABEL_WIDTH$}{date}", "Created:");
+        }
         if let Some(ref desc) = self.description
             && !desc.is_empty()
         {
-            print!("  {}", desc.dimmed());
+            println!("  {:<LABEL_WIDTH$}{desc}", "Description:");
         }
         if let Some(dur) = self.estimated_duration_seconds {
             let mins = (dur / 60.0).round() as u32;
-            print!("  {mins} min");
+            println!("  {:<LABEL_WIDTH$}{mins} min", "Duration:");
         }
         if let Some(dist) = self.estimated_distance_meters {
-            print!("  {:.1} km", dist / 1000.0);
+            println!("  {:<LABEL_WIDTH$}{:.1} km", "Distance:", dist / 1000.0);
         }
-        println!();
     }
 }
 
@@ -95,7 +92,12 @@ pub async fn list(
         let workouts: Vec<Workout> = arr.iter().map(workout_from_json).collect();
         if verbose {
             // List endpoint doesn't return workoutSegments — fetch each workout individually
-            for workout in &workouts {
+            println!("{}", "Workouts".bold());
+            println!("{}", "\u{2500}".repeat(40).dimmed());
+            for (i, workout) in workouts.iter().enumerate() {
+                if i > 0 {
+                    println!();
+                }
                 workout.print_human();
                 let detail: serde_json::Value = client
                     .get_json(&format!("/workout-service/workout/{}", workout.id))
@@ -107,9 +109,10 @@ pub async fn list(
                         }
                     }
                 }
-                println!();
             }
-            println!("{} items", workouts.len());
+            let n = workouts.len();
+            println!();
+            println!("{n} item{}", if n == 1 { "" } else { "s" });
         } else {
             output.print_list(&workouts, "Workouts");
         }
