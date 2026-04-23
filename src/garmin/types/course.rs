@@ -41,8 +41,8 @@ pub struct BoundingBox {
 pub struct CourseSegment {
     #[serde(default)]
     pub sort_order: u64,
-    #[serde(default)]
-    pub distance_in_meters: f64,
+    #[serde(rename(deserialize = "distanceInMeters"), default)]
+    pub distance_meters: f64,
     #[serde(default)]
     pub number_of_points: u64,
 }
@@ -61,12 +61,12 @@ pub struct Course {
     /// TODO: the detail endpoint returns a numeric `activityTypePk` instead of
     /// the nested `activityType.typeKey`. Not yet mapped — `get` may show None.
     pub activity_type: Option<ActivityTypeRef>,
-    #[serde(alias = "distanceMeter")]
-    pub distance_in_meters: Option<f64>,
-    #[serde(alias = "elevationGainMeter")]
-    pub elevation_gain_in_meters: Option<f64>,
-    #[serde(alias = "elevationLossMeter")]
-    pub elevation_loss_in_meters: Option<f64>,
+    #[serde(rename(deserialize = "distanceInMeters"), alias = "distanceMeter")]
+    pub distance_meters: Option<f64>,
+    #[serde(rename(deserialize = "elevationGainInMeters"), alias = "elevationGainMeter")]
+    pub elevation_gain_meters: Option<f64>,
+    #[serde(rename(deserialize = "elevationLossInMeters"), alias = "elevationLossMeter")]
+    pub elevation_loss_meters: Option<f64>,
     pub start_latitude: Option<f64>,
     pub start_longitude: Option<f64>,
     pub start_point: Option<StartPoint>,
@@ -76,8 +76,8 @@ pub struct Course {
     pub has_power_guide: Option<bool>,
     pub has_turn_detection_disabled: Option<bool>,
     pub public: Option<bool>,
-    #[serde(alias = "speedMeterPerSecond")]
-    pub speed_in_meters_per_second: Option<f64>,
+    #[serde(rename(deserialize = "speedInMetersPerSecond"), alias = "speedMeterPerSecond")]
+    pub speed_mps: Option<f64>,
     pub elapsed_seconds: Option<f64>,
     /// Encoded as int by the API: 1=device, 3=DEM corrected.
     pub elevation_source: Option<i64>,
@@ -132,19 +132,19 @@ impl HumanReadable for Course {
         if let Some(ref desc) = self.course_description {
             println!("  {:<LABEL_WIDTH$}{desc}", "Description:");
         }
-        if let Some(dist) = self.distance_in_meters {
+        if let Some(dist) = self.distance_meters {
             let duration_str = self
                 .elapsed_seconds
                 .map(|s| format!(" in {}", fmt_hms(s)))
                 .unwrap_or_default();
             println!("  {:<LABEL_WIDTH$}{:.2} km{duration_str}", "Distance:", dist / 1000.0);
         }
-        if let Some(speed) = self.speed_in_meters_per_second.filter(|&s| s > 0.0) {
+        if let Some(speed) = self.speed_mps.filter(|&s| s > 0.0) {
             println!("  {:<LABEL_WIDTH$}{:.2} km/h", "Speed:", speed * 3.6);
         }
-        if let Some(gain) = self.elevation_gain_in_meters {
+        if let Some(gain) = self.elevation_gain_meters {
             let loss_str = self
-                .elevation_loss_in_meters
+                .elevation_loss_meters
                 .map(|l| format!(" / -{l:.0}m"))
                 .unwrap_or_default();
             println!("  {:<LABEL_WIDTH$}+{gain:.0}m{loss_str}", "Elevation:");

@@ -55,11 +55,12 @@ pub struct PersonalRecord {
     pub sport: String,
     pub value: Option<f64>,
     pub formatted_value: Option<String>,
-    pub pace_min_km: Option<String>,
     pub activity_id: Option<u64>,
     pub activity_type: Option<String>,
     pub activity_name: Option<String>,
     pub date: Option<String>,
+    #[serde(skip)]
+    pub distance_m: Option<f64>,
 }
 
 impl PersonalRecord {
@@ -75,18 +76,17 @@ impl PersonalRecord {
 
         let value = entry.value;
         let formatted_value = value.map(|val| format_value(key, val));
-        let pace = value.and_then(|val| compute_pace(rt.and_then(|t| t.distance_m()), val));
 
         Self {
             record_type: label_from_key(key),
             sport: rt.map(|t| t.sport.to_lowercase()).unwrap_or_else(|| "unknown".into()),
             value,
             formatted_value,
-            pace_min_km: pace,
             activity_id,
             activity_type: entry.activity_type.clone(),
             activity_name: entry.activity_name.clone(),
             date,
+            distance_m: rt.and_then(|t| t.distance_m()),
         }
     }
 }
@@ -159,7 +159,9 @@ impl HumanReadable for PersonalRecord {
         println!("{}", self.record_type.bold());
         let val = self.formatted_value.as_deref().unwrap_or("\u{2014}");
         println!("  {:<LABEL_WIDTH$}{}", "Value:", val.cyan());
-        if let Some(ref pace) = self.pace_min_km {
+        if let (Some(v), Some(d)) = (self.value, self.distance_m)
+            && let Some(pace) = compute_pace(Some(d), v)
+        {
             println!("  {:<LABEL_WIDTH$}{pace}", "Pace:");
         }
         if let Some(ref d) = self.date {

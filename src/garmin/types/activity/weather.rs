@@ -19,11 +19,12 @@ pub struct ActivityWeather {
     #[serde(rename(deserialize = "dewPoint"), default, deserialize_with = "deser_f_to_c")]
     pub dew_point_celsius: Option<f64>,
     pub relative_humidity: Option<f64>,
-    #[serde(default, deserialize_with = "deser_mph_to_kmh")]
-    pub wind_speed: Option<f64>,
-    #[serde(default, deserialize_with = "deser_mph_to_kmh")]
-    pub wind_gust: Option<f64>,
-    pub wind_direction: Option<i64>,
+    #[serde(rename(deserialize = "windSpeed"), default, deserialize_with = "deser_mph_to_kmh")]
+    pub wind_speed_kmh: Option<f64>,
+    #[serde(rename(deserialize = "windGust"), default, deserialize_with = "deser_mph_to_kmh")]
+    pub wind_gust_kmh: Option<f64>,
+    #[serde(rename(deserialize = "windDirection"))]
+    pub wind_direction_degrees: Option<i64>,
     pub wind_direction_compass_point: Option<String>,
     /// API key is `weatherTypeDTO`; strip DTO suffix and flatten nested `desc`.
     #[serde(
@@ -60,7 +61,7 @@ impl HumanReadable for ActivityWeather {
         if let Some(hum) = self.relative_humidity {
             println!("  {:<LABEL_WIDTH$}{:.0}%", "Humidity:", hum);
         }
-        if let Some(wind) = self.wind_speed {
+        if let Some(wind) = self.wind_speed_kmh {
             let dir = self.wind_direction_compass_point.as_deref().unwrap_or("");
             println!("  {:<LABEL_WIDTH$}{:.0} km/h {dir}", "Wind:", wind);
         }

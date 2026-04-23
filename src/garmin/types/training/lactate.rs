@@ -1,4 +1,5 @@
 use crate::commands::output::{HumanReadable, LABEL_WIDTH};
+use crate::garmin::types::helpers::pace_from_speed;
 use colored::Colorize;
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
@@ -21,8 +22,7 @@ pub struct BiometricDataPoint {
 pub struct LactateThreshold {
     pub date: String,
     pub heart_rate: Option<i64>,
-    pub speed_meters_per_second: Option<f64>,
-    pub pace: Option<String>,
+    pub speed_mps: Option<f64>,
 }
 
 impl HumanReadable for LactateThreshold {
@@ -32,7 +32,7 @@ impl HumanReadable for LactateThreshold {
             .heart_rate
             .map(|v| format!("{v} bpm"))
             .unwrap_or_else(|| "\u{2013}".into());
-        let pace = self.pace.as_deref().unwrap_or("\u{2013}");
+        let pace = self.speed_mps.map(pace_from_speed).unwrap_or_else(|| "\u{2013}".into());
         println!("  {:<LABEL_WIDTH$}{}", "Heart rate:", hr.cyan());
         println!("  {:<LABEL_WIDTH$}{}", "Pace:", pace.cyan());
     }

@@ -3,7 +3,7 @@ use super::output::Output;
 use crate::error::{Error, Result};
 use crate::garmin::{
     BiometricDataPoint, DailyReadiness, EnduranceScore, FitnessAge, GarminClient, HillScore, HrZoneBoundary,
-    LactateThreshold, RacePredictions, TrainingScore, TrainingStatus, correct_lt_speed, pace_from_speed,
+    LactateThreshold, RacePredictions, TrainingScore, TrainingStatus, correct_lt_speed,
 };
 use chrono::NaiveDate;
 use clap::Subcommand;
@@ -196,8 +196,7 @@ async fn lactate_threshold(client: &GarminClient, output: &Output, start: NaiveD
         .map(|(date, (hr, speed))| LactateThreshold {
             date,
             heart_rate: hr,
-            speed_meters_per_second: speed,
-            pace: speed.map(pace_from_speed),
+            speed_mps: speed,
         })
         .collect();
 

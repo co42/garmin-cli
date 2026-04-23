@@ -17,7 +17,7 @@ pub struct SplitsResponse {
 #[serde(rename_all(deserialize = "camelCase"))]
 pub struct ActivitySplit {
     /// Not returned by API — filled in by the client after deserialization.
-    #[serde(skip, default)]
+    #[serde(default, skip_deserializing)]
     pub split: i64,
     #[serde(rename(deserialize = "distance"))]
     pub distance_meters: Option<f64>,

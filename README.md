@@ -115,7 +115,7 @@ garmin training hr-zones                                               # alias: 
 | `endurance-score` | score (0–10000), classification (Base→Elite) |
 | `hill-score` | overall, strength, endurance components |
 | `fitness-age` | date, fitness_age vs chronological_age, component breakdown |
-| `lactate-threshold` | heart_rate (bpm), pace (min/km), speed_meters_per_second. If the window is empty, falls back to the most recent prior value (up to 365 days back) |
+| `lactate-threshold` | heart_rate (bpm), pace (min/km), speed_mps. If the window is empty, falls back to the most recent prior value (up to 365 days back) |
 | `hr-zones` | HR zone boundaries (zone, min_bpm, max_bpm — max_bpm absent for last zone) from latest running activity |
 
 ### Health
