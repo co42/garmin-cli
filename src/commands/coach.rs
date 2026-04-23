@@ -112,7 +112,7 @@ fn pick_primary(events: Vec<TargetEvent>) -> Option<TargetEvent> {
     let mut primary: Option<TargetEvent> = None;
     let mut first: Option<TargetEvent> = None;
     for e in events {
-        if e.event_customization.as_ref().is_some_and(|c| c.is_primary_event) {
+        if e.is_primary_event == Some(true) {
             primary = Some(e);
             break;
         }

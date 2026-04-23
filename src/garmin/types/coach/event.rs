@@ -7,53 +7,104 @@ use colored::Colorize;
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 
+/// Flat view of a target event. The Garmin API wraps these fields in three
+/// nested DTOs (`eventTimeLocal`, `completionTarget`, `eventCustomization`);
+/// the custom Deserialize folds them into a single flat struct so JSON
+/// consumers don't have to do it.
 #[skip_serializing_none]
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all(deserialize = "camelCase"))]
+#[derive(Debug, Serialize)]
 pub struct TargetEvent {
     pub id: u64,
-    pub event_name: String,
-    pub date: String,
+    pub name: String,
     pub event_type: Option<String>,
-    pub event_time_local: Option<EventTime>,
+    pub date: String,
+    pub start_time_local: Option<String>,
+    pub timezone: Option<String>,
     pub location: Option<String>,
-    pub completion_target: Option<UnitValue>,
-    pub event_customization: Option<EventCustomization>,
+    pub distance_meters: Option<f64>,
+    pub goal_seconds: Option<f64>,
+    pub predicted_race_time_seconds: Option<f64>,
+    pub projected_race_time_seconds: Option<f64>,
+    pub is_primary_event: Option<bool>,
+    pub training_plan_id: Option<u64>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+impl<'de> Deserialize<'de> for TargetEvent {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(rename_all(deserialize = "camelCase"))]
+        struct Raw {
+            id: u64,
+            event_name: String,
+            date: String,
+            event_type: Option<String>,
+            event_time_local: Option<EventTime>,
+            location: Option<String>,
+            completion_target: Option<UnitValue>,
+            event_customization: Option<EventCustomization>,
+        }
+        let r = Raw::deserialize(d)?;
+        let cust = r.event_customization;
+        Ok(TargetEvent {
+            id: r.id,
+            name: r.event_name,
+            event_type: r.event_type,
+            date: r.date,
+            start_time_local: r.event_time_local.as_ref().map(|t| t.start_time_hh_mm.clone()),
+            timezone: r.event_time_local.as_ref().map(|t| t.time_zone_id.clone()),
+            location: r.location,
+            distance_meters: r.completion_target.as_ref().and_then(unit_value_to_meters),
+            goal_seconds: cust
+                .as_ref()
+                .and_then(|c| c.custom_goal.as_ref())
+                .and_then(unit_value_to_seconds),
+            predicted_race_time_seconds: cust.as_ref().and_then(|c| c.predicted_race_time_seconds),
+            projected_race_time_seconds: cust.as_ref().and_then(|c| c.projected_race_time_seconds),
+            is_primary_event: cust.as_ref().map(|c| c.is_primary_event),
+            training_plan_id: cust.as_ref().and_then(|c| c.training_plan_id),
+        })
+    }
+}
+
+#[derive(Debug, Deserialize)]
 #[serde(rename_all(deserialize = "camelCase"))]
-pub struct EventTime {
-    pub start_time_hh_mm: String,
-    pub time_zone_id: String,
+struct EventTime {
+    start_time_hh_mm: String,
+    time_zone_id: String,
 }
 
 /// Used for both `completionTarget` (distance, km/mi) and `customGoal` (time,
 /// always seconds). The `unit` field disambiguates; don't assume.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct UnitValue {
-    pub value: f64,
-    pub unit: String,
+#[derive(Debug, Deserialize)]
+struct UnitValue {
+    value: f64,
+    unit: String,
 }
 
-#[skip_serializing_none]
-#[derive(Debug, Serialize, Deserialize)]
+fn unit_value_to_meters(u: &UnitValue) -> Option<f64> {
+    match u.unit.as_str() {
+        "kilometer" => Some(u.value * 1000.0),
+        "meter" => Some(u.value),
+        "mile" => Some(u.value * 1609.344),
+        _ => None,
+    }
+}
+
+fn unit_value_to_seconds(u: &UnitValue) -> Option<f64> {
+    (u.unit == "second").then_some(u.value)
+}
+
+#[derive(Debug, Deserialize)]
 #[serde(rename_all(deserialize = "camelCase"))]
-pub struct EventCustomization {
-    pub custom_goal: Option<UnitValue>,
+struct EventCustomization {
+    custom_goal: Option<UnitValue>,
     #[serde(default)]
-    pub is_primary_event: bool,
-    pub training_plan_id: Option<u64>,
-    pub training_plan_type: Option<String>,
+    is_primary_event: bool,
+    training_plan_id: Option<u64>,
     #[serde(rename(deserialize = "projectedRaceTimeDurationSeconds"))]
-    pub projected_race_time_seconds: Option<f64>,
+    projected_race_time_seconds: Option<f64>,
     #[serde(rename(deserialize = "predictedRaceTimeDurationSeconds"))]
-    pub predicted_race_time_seconds: Option<f64>,
-    #[serde(rename(deserialize = "projectedRaceSpeed"))]
-    pub projected_race_speed_mps: Option<f64>,
-    #[serde(rename(deserialize = "predictedRaceSpeed"))]
-    pub predicted_race_speed_mps: Option<f64>,
-    pub enrollment_time: Option<String>,
+    predicted_race_time_seconds: Option<f64>,
 }
 
 /// Aggregate rendered by `coach event`. JSON shape is stable across modes:
@@ -82,7 +133,7 @@ fn print_snapshot(ce: &CoachEvent) {
     print_header(ce, true);
     println!();
     let today = ce.projections.first();
-    print_today_block(today, ce.event.event_customization.as_ref());
+    print_today_block(today, ce.event.goal_seconds);
 }
 
 fn print_history(ce: &CoachEvent) {
@@ -101,7 +152,7 @@ fn print_history(ce: &CoachEvent) {
 
 fn print_header(ce: &CoachEvent, with_details: bool) {
     // Title line: event name + dimmed "target event" suffix.
-    println!("{}  {}", ce.event.event_name.bold(), "target event".dimmed());
+    println!("{}  {}", ce.event.name.bold(), "target event".dimmed());
     println!("{}", "\u{2500}".repeat(40).dimmed());
 
     let when = format_when(&ce.event, with_details);
@@ -111,16 +162,11 @@ fn print_header(ce: &CoachEvent, with_details: bool) {
     if with_details && let Some(ref loc) = ce.event.location {
         println!("  {:<LABEL_WIDTH$}{loc}", "Where:");
     }
-    if let Some(ref ct) = ce.event.completion_target {
-        println!("  {:<LABEL_WIDTH$}{}", "Distance:", format_distance(ct));
+    if let Some(m) = ce.event.distance_meters {
+        println!("  {:<LABEL_WIDTH$}{:.2} km", "Distance:", m / 1000.0);
     }
-    let goal = ce
-        .event
-        .event_customization
-        .as_ref()
-        .and_then(|c| c.custom_goal.as_ref());
-    if let (Some(goal), Some(ct)) = (goal, ce.event.completion_target.as_ref()) {
-        println!("  {:<LABEL_WIDTH$}{}", "Goal:", format_goal(goal, ct));
+    if let (Some(goal_secs), Some(m)) = (ce.event.goal_seconds, ce.event.distance_meters) {
+        println!("  {:<LABEL_WIDTH$}{}", "Goal:", format_goal(goal_secs, m));
     }
     if with_details && (ce.plan_id.is_some() || ce.plan_name.is_some()) {
         let name = ce.plan_name.as_deref().unwrap_or("\u{2014}");
@@ -129,17 +175,13 @@ fn print_header(ce: &CoachEvent, with_details: bool) {
     }
 }
 
-fn print_today_block(proj: Option<&EventProjection>, cust: Option<&EventCustomization>) {
+fn print_today_block(proj: Option<&EventProjection>, goal_seconds: Option<f64>) {
     let today_label = chrono::Local::now().date_naive().format("%Y-%m-%d").to_string();
     println!("  {}", format!("Today ({today_label})").bold());
     let Some(p) = proj else {
         println!("    {}", "(no projection yet)".dimmed());
         return;
     };
-    let goal_seconds = cust
-        .and_then(|c| c.custom_goal.as_ref())
-        .filter(|g| g.unit == "second")
-        .map(|g| g.value);
 
     if let Some(secs) = p.projection_race_time_seconds {
         let pace = p
@@ -258,41 +300,24 @@ fn format_when(event: &TargetEvent, with_time: bool) -> String {
         d => format!("({}d ago)", -d),
     };
     let time_part = if with_time {
-        event
-            .event_time_local
-            .as_ref()
-            .map(|t| format!("  {}  {}", t.start_time_hh_mm, t.time_zone_id))
-            .unwrap_or_default()
+        match (event.start_time_local.as_deref(), event.timezone.as_deref()) {
+            (Some(start), Some(tz)) => format!("  {start}  {tz}"),
+            (Some(start), None) => format!("  {start}"),
+            _ => String::new(),
+        }
     } else {
         String::new()
     };
     format!("{weekday} {iso}{time_part}   {rel}")
 }
 
-fn format_distance(ct: &UnitValue) -> String {
-    match ct.unit.as_str() {
-        "kilometer" => format!("{:.2} km", ct.value),
-        "mile" => format!("{:.2} mi", ct.value),
-        other => format!("{} {other}", ct.value),
+fn format_goal(goal_seconds: f64, distance_meters: f64) -> String {
+    let hms = fmt_hms(goal_seconds);
+    if distance_meters <= 0.0 {
+        return hms;
     }
-}
-
-fn format_goal(goal: &UnitValue, completion: &UnitValue) -> String {
-    if goal.unit != "second" {
-        return format!("{} {}", goal.value, goal.unit);
-    }
-    let hms = fmt_hms(goal.value);
-    let pace = match completion.unit.as_str() {
-        "kilometer" if completion.value > 0.0 => {
-            let secs_per_km = goal.value / completion.value;
-            format!("   ({}/km)", fmt_pace_per_km(secs_per_km).trim_end_matches(" /km"))
-        }
-        "mile" if completion.value > 0.0 => {
-            let secs_per_mi = goal.value / completion.value;
-            format!("   ({}/mi)", fmt_pace_per_km(secs_per_mi).trim_end_matches(" /km"))
-        }
-        _ => String::new(),
-    };
+    let secs_per_km = goal_seconds / (distance_meters / 1000.0);
+    let pace = format!("   ({}/km)", fmt_pace_per_km(secs_per_km).trim_end_matches(" /km"));
     format!("{hms}{pace}")
 }
 

@@ -16,20 +16,19 @@ use serde_with::skip_serializing_none;
 pub struct CoachPlan {
     pub training_plan_id: u64,
     pub name: String,
-    /// API returns a full datetime; keep just YYYY-MM-DD at print time.
     pub start_date: Option<String>,
     pub end_date: Option<String>,
-    pub duration_in_weeks: Option<u32>,
-    pub training_level: Option<TrainingLevel>,
+    pub duration_weeks: Option<u32>,
     pub avg_weekly_workouts: Option<u32>,
-    pub training_version: Option<TrainingVersion>,
-    pub training_status: Option<TrainingStatusRef>,
+    pub training_status: Option<String>,
+    pub training_level: Option<String>,
+    pub training_version: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub task_list: Vec<CoachTask>,
+    pub supplemental_sports: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub phases: Vec<TrainingPhase>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub supplemental_sports: Vec<String>,
+    pub task_list: Vec<CoachTask>,
 }
 
 impl<'de> Deserialize<'de> for CoachPlan {
@@ -66,36 +65,36 @@ impl<'de> Deserialize<'de> for CoachPlan {
         Ok(CoachPlan {
             training_plan_id: r.training_plan_id,
             name: r.name,
-            start_date: r.start_date,
-            end_date: r.end_date,
-            duration_in_weeks: r.duration_in_weeks,
-            training_level: r.training_level,
+            start_date: r.start_date.map(trim_date_owned),
+            end_date: r.end_date.map(trim_date_owned),
+            duration_weeks: r.duration_in_weeks,
             avg_weekly_workouts: r.avg_weekly_workouts,
-            training_version: r.training_version,
-            training_status: r.training_status,
-            task_list: r.task_list,
-            phases,
+            training_status: r.training_status.map(|s| s.status_key),
+            training_level: r.training_level.map(|s| s.level_key),
+            training_version: r.training_version.map(|s| s.version_name),
             supplemental_sports: r.supplemental_sports,
+            phases,
+            task_list: r.task_list,
         })
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all(deserialize = "camelCase"))]
-pub struct TrainingLevel {
-    pub level_key: String,
+struct TrainingLevel {
+    level_key: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all(deserialize = "camelCase"))]
-pub struct TrainingVersion {
-    pub version_name: String,
+struct TrainingVersion {
+    version_name: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all(deserialize = "camelCase"))]
-pub struct TrainingStatusRef {
-    pub status_key: String,
+struct TrainingStatusRef {
+    status_key: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -106,18 +105,53 @@ pub struct TrainingPlanListResponse {
 }
 
 #[skip_serializing_none]
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all(deserialize = "camelCase"))]
+#[derive(Debug, Serialize)]
 pub struct TrainingPlanSummary {
     pub training_plan_id: u64,
     pub name: String,
     pub start_date: Option<String>,
     pub end_date: Option<String>,
-    pub duration_in_weeks: Option<u32>,
+    pub duration_weeks: Option<u32>,
     pub training_plan_category: Option<String>,
-    pub training_level: Option<TrainingLevel>,
-    pub training_version: Option<TrainingVersion>,
-    pub training_status: Option<TrainingStatusRef>,
+    pub training_status: Option<String>,
+    pub training_level: Option<String>,
+    pub training_version: Option<String>,
+}
+
+impl<'de> Deserialize<'de> for TrainingPlanSummary {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(rename_all(deserialize = "camelCase"))]
+        struct Raw {
+            #[serde(default)]
+            training_plan_id: u64,
+            #[serde(default = "unknown")]
+            name: String,
+            start_date: Option<String>,
+            end_date: Option<String>,
+            duration_in_weeks: Option<u32>,
+            training_plan_category: Option<String>,
+            training_level: Option<TrainingLevel>,
+            training_version: Option<TrainingVersion>,
+            training_status: Option<TrainingStatusRef>,
+        }
+        let r = Raw::deserialize(d)?;
+        Ok(TrainingPlanSummary {
+            training_plan_id: r.training_plan_id,
+            name: r.name,
+            start_date: r.start_date.map(trim_date_owned),
+            end_date: r.end_date.map(trim_date_owned),
+            duration_weeks: r.duration_in_weeks,
+            training_plan_category: r.training_plan_category,
+            training_status: r.training_status.map(|s| s.status_key),
+            training_level: r.training_level.map(|s| s.level_key),
+            training_version: r.training_version.map(|s| s.version_name),
+        })
+    }
+}
+
+fn trim_date_owned(s: String) -> String {
+    s[..s.len().min(10)].to_string()
 }
 
 impl HumanReadable for CoachPlan {
@@ -126,28 +160,20 @@ impl HumanReadable for CoachPlan {
         println!("{}", "\u{2500}".repeat(40).dimmed());
         println!("  {:<LABEL_WIDTH$}{}", "ID:", self.training_plan_id);
         if let Some(ref level) = self.training_level {
-            println!("  {:<LABEL_WIDTH$}{}", "Level:", level.level_key.cyan());
+            println!("  {:<LABEL_WIDTH$}{}", "Level:", level.cyan());
         }
         if let Some(ref version) = self.training_version {
-            println!("  {:<LABEL_WIDTH$}{}", "Target:", version.version_name);
+            println!("  {:<LABEL_WIDTH$}{}", "Target:", version);
         }
         if let (Some(start), Some(end)) = (&self.start_date, &self.end_date) {
-            let weeks = self
-                .duration_in_weeks
-                .map(|w| format!(" ({w} weeks)"))
-                .unwrap_or_default();
-            println!(
-                "  {:<LABEL_WIDTH$}{} \u{2192} {}{weeks}",
-                "Range:",
-                trim_date(start),
-                trim_date(end)
-            );
+            let weeks = self.duration_weeks.map(|w| format!(" ({w} weeks)")).unwrap_or_default();
+            println!("  {:<LABEL_WIDTH$}{start} \u{2192} {end}{weeks}", "Range:");
         }
         if let Some(avg) = self.avg_weekly_workouts {
             println!("  {:<LABEL_WIDTH$}{avg}", "Workouts/wk:");
         }
         if let Some(ref status) = self.training_status {
-            println!("  {:<LABEL_WIDTH$}{}", "Status:", status.status_key);
+            println!("  {:<LABEL_WIDTH$}{status}", "Status:");
         }
         if !self.supplemental_sports.is_empty() {
             let joined = self
@@ -174,11 +200,7 @@ impl HumanReadable for CoachPlan {
 
 impl HumanReadable for TrainingPlanSummary {
     fn print_human(&self) {
-        let status = self
-            .training_status
-            .as_ref()
-            .map(|s| s.status_key.as_str())
-            .unwrap_or("");
+        let status = self.training_status.as_deref().unwrap_or("");
         let glyph = match status {
             "Completed" => "\u{2713}",
             "Paused" => "\u{2016}",
@@ -186,16 +208,12 @@ impl HumanReadable for TrainingPlanSummary {
             _ => "\u{25E6}",
         };
         let range = match (&self.start_date, &self.end_date) {
-            (Some(a), Some(b)) => format!("{} \u{2192} {}", trim_date(a), trim_date(b)),
+            (Some(a), Some(b)) => format!("{a} \u{2192} {b}"),
             _ => String::new(),
         };
-        let weeks = self.duration_in_weeks.map(|w| format!("{w} wk")).unwrap_or_default();
-        let level = self.training_level.as_ref().map(|l| l.level_key.as_str()).unwrap_or("");
-        let version = self
-            .training_version
-            .as_ref()
-            .map(|v| v.version_name.as_str())
-            .unwrap_or("");
+        let weeks = self.duration_weeks.map(|w| format!("{w} wk")).unwrap_or_default();
+        let level = self.training_level.as_deref().unwrap_or("");
+        let version = self.training_version.as_deref().unwrap_or("");
         let level_target = match (level.is_empty(), version.is_empty()) {
             (false, false) => format!("{level} \u{00B7} {version}"),
             (false, true) => level.into(),
@@ -209,21 +227,13 @@ impl HumanReadable for TrainingPlanSummary {
     }
 }
 
-fn trim_date(s: &str) -> &str {
-    &s[..s.len().min(10)]
-}
-
 fn print_phases(phases: &[TrainingPhase]) {
     for phase in phases {
         let label = phase_display_label(&phase.training_phase);
         let range = if phase.start_date == phase.end_date {
-            trim_date(&phase.start_date).to_string()
+            phase.start_date.clone()
         } else {
-            format!(
-                "{} \u{2192} {}",
-                trim_date(&phase.start_date),
-                trim_date(&phase.end_date)
-            )
+            format!("{} \u{2192} {}", phase.start_date, phase.end_date)
         };
         let marker = if phase.current_phase {
             "   \u{25CF} current".to_string()
