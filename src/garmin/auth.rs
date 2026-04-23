@@ -1,7 +1,7 @@
 use crate::config;
 use crate::error::{Error, Result};
-use hmac::{Hmac, Mac};
-use rand::Rng;
+use hmac::{Hmac, KeyInit, Mac};
+use rand::RngExt;
 use serde::{Deserialize, Serialize};
 use sha1::Sha1;
 use std::collections::BTreeMap;
@@ -18,9 +18,7 @@ const SSO_MOBILE_USER_AGENT: &str = "GCM-iOS-5.22.1.4";
 
 /// Browser-like headers for SSO — Cloudflare blocks mismatched UAs.
 fn sso_headers() -> reqwest::header::HeaderMap {
-    use reqwest::header::{
-        ACCEPT, ACCEPT_LANGUAGE, HeaderMap, HeaderName, HeaderValue, USER_AGENT,
-    };
+    use reqwest::header::{ACCEPT, ACCEPT_LANGUAGE, HeaderMap, HeaderName, HeaderValue, USER_AGENT};
     let mut h = HeaderMap::new();
     h.insert(
         USER_AGENT,
@@ -74,10 +72,7 @@ pub struct OAuth2Token {
 
 impl OAuth2Token {
     pub fn is_expired(&self) -> bool {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64;
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
         now >= self.expires_at - 60
     }
 }
@@ -142,11 +137,8 @@ pub async fn login(email: &str, password: &str) -> Result<Tokens> {
 
 /// Refresh OAuth2 token using stored OAuth1 credentials
 pub async fn refresh(tokens: &mut Tokens) -> Result<()> {
-    let client = reqwest::Client::builder()
-        .user_agent(CONNECT_USER_AGENT)
-        .build()?;
-    tokens.oauth2 =
-        exchange_oauth1_for_oauth2(&client, &tokens.oauth1, &tokens.consumer, false).await?;
+    let client = reqwest::Client::builder().user_agent(CONNECT_USER_AGENT).build()?;
+    tokens.oauth2 = exchange_oauth1_for_oauth2(&client, &tokens.oauth1, &tokens.consumer, false).await?;
     tokens.save()?;
     Ok(())
 }
@@ -154,11 +146,7 @@ pub async fn refresh(tokens: &mut Tokens) -> Result<()> {
 // --- SSO flow (mobile API, March 2026) ---
 
 async fn sso_login(client: &reqwest::Client, email: &str, password: &str) -> Result<String> {
-    let login_params = [
-        ("clientId", CLIENT_ID),
-        ("locale", "en-US"),
-        ("service", SERVICE_URL),
-    ];
+    let login_params = [("clientId", CLIENT_ID), ("locale", "en-US"), ("service", SERVICE_URL)];
 
     // Step 1: GET /mobile/sso/en/sign-in — sets cookies
     client
@@ -233,11 +221,7 @@ async fn complete_sso(client: &reqwest::Client) {
         .await;
 }
 
-async fn handle_mfa(
-    client: &reqwest::Client,
-    login_params: &[(&str, &str)],
-    mfa_method: &str,
-) -> Result<String> {
+async fn handle_mfa(client: &reqwest::Client, login_params: &[(&str, &str)], mfa_method: &str) -> Result<String> {
     eprint!("MFA code: ");
     let mut mfa_code = String::new();
     std::io::stdin().read_line(&mut mfa_code)?;
@@ -273,9 +257,7 @@ async fn handle_mfa(
             .pointer("/responseStatus/message")
             .and_then(|v| v.as_str())
             .unwrap_or("");
-        return Err(Error::Auth(format!(
-            "MFA verification failed: {resp_type} {message}"
-        )));
+        return Err(Error::Auth(format!("MFA verification failed: {resp_type} {message}")));
     }
 
     body["serviceTicketId"]
@@ -344,9 +326,7 @@ async fn exchange_ticket_for_oauth1(
 ) -> Result<OAuth1Token> {
     let base_path = format!("{CONNECT_API}/oauth-service/oauth/preauthorized");
     let encoded_ticket = urlencoding::encode(ticket);
-    let url = format!(
-        "{base_path}?ticket={encoded_ticket}&login-url={SERVICE_URL}&accepts-mfa-tokens=true"
-    );
+    let url = format!("{base_path}?ticket={encoded_ticket}&login-url={SERVICE_URL}&accepts-mfa-tokens=true");
 
     let auth_header = oauth1_header(
         "GET",
@@ -394,10 +374,7 @@ async fn exchange_ticket_for_oauth1(
         .map(|(_, v)| v.clone())
         .ok_or_else(|| Error::Auth("OAuth1 token secret not in response".into()))?;
 
-    Ok(OAuth1Token {
-        token,
-        token_secret,
-    })
+    Ok(OAuth1Token { token, token_secret })
 }
 
 async fn exchange_oauth1_for_oauth2(
@@ -441,9 +418,7 @@ async fn exchange_oauth1_for_oauth2(
     let body = resp.text().await?;
 
     if !status.is_success() {
-        return Err(Error::Auth(format!(
-            "OAuth2 exchange failed ({status}): {body}"
-        )));
+        return Err(Error::Auth(format!("OAuth2 exchange failed ({status}): {body}")));
     }
 
     #[derive(Deserialize)]
@@ -455,11 +430,7 @@ async fn exchange_oauth1_for_oauth2(
     }
 
     let resp: OAuth2Response = serde_json::from_str(&body)?;
-    let expires_at = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64
-        + resp.expires_in;
+    let expires_at = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64 + resp.expires_in;
 
     Ok(OAuth2Token {
         access_token: resp.access_token,
@@ -555,10 +526,7 @@ fn build_oauth1_header(
 
     let mut mac = Hmac::<Sha1>::new_from_slice(signing_key.as_bytes()).unwrap();
     hmac::Mac::update(&mut mac, base_string.as_bytes());
-    let signature = base64::Engine::encode(
-        &base64::engine::general_purpose::STANDARD,
-        mac.finalize().into_bytes(),
-    );
+    let signature = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, mac.finalize().into_bytes());
 
     oauth_params.insert("oauth_signature".into(), signature);
 

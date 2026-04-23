@@ -1,32 +1,23 @@
 use colored::Colorize;
 use serde::Serialize;
-use std::io::IsTerminal;
 
 use crate::error::Error;
 
 #[derive(Debug, Clone)]
 pub struct Output {
     json: bool,
-    pretty: bool,
-    quiet: bool,
     fields: Vec<String>,
 }
 
 impl Output {
-    pub fn new(json: Option<bool>, pretty: bool, quiet: bool, fields: Vec<String>) -> Self {
-        let json = json.unwrap_or_else(|| !std::io::stdout().is_terminal());
-        Self {
-            json,
-            pretty,
-            quiet,
-            fields,
-        }
+    pub fn new(json: bool, fields: Vec<String>) -> Self {
+        Self { json, fields }
     }
 
     pub fn print<T: Serialize + HumanReadable>(&self, data: &T) {
         if self.json {
             self.print_json(data);
-        } else if !self.quiet {
+        } else {
             data.print_human();
         }
     }
@@ -34,22 +25,18 @@ impl Output {
     pub fn print_list<T: Serialize + HumanReadable>(&self, items: &[T], title: &str) {
         if self.json {
             self.print_json(&items);
-        } else if !self.quiet {
-            println!("{}", title.bold());
-            println!("{}", "\u{2500}".repeat(40).dimmed());
-            for (i, item) in items.iter().enumerate() {
-                if i > 0 {
-                    println!();
-                }
-                item.print_human();
-            }
-            println!();
-            println!(
-                "{} item{}",
-                items.len(),
-                if items.len() == 1 { "" } else { "s" }
-            );
+            return;
         }
+        println!("{}", title.bold());
+        println!("{}", "\u{2500}".repeat(40).dimmed());
+        for (i, item) in items.iter().enumerate() {
+            if i > 0 {
+                println!();
+            }
+            item.print_human();
+        }
+        println!();
+        println!("{} item{}", items.len(), if items.len() == 1 { "" } else { "s" });
     }
 
     /// Like `print_list` but prints rows contiguously without blank separators.
@@ -58,20 +45,17 @@ impl Output {
     pub fn print_table<T: Serialize + HumanReadable>(&self, items: &[T], title: &str) {
         if self.json {
             self.print_json(&items);
-        } else if !self.quiet {
-            println!("{}", title.bold());
-            println!("{}", "\u{2500}".repeat(40).dimmed());
-            for item in items {
-                item.print_human();
-            }
+            return;
+        }
+        println!("{}", title.bold());
+        println!("{}", "\u{2500}".repeat(40).dimmed());
+        for item in items {
+            item.print_human();
         }
     }
 
-    /// Print a raw `serde_json::Value`, respecting quiet/fields flags.
+    /// Print a raw `serde_json::Value`, respecting `--fields`.
     pub fn print_value(&self, value: &serde_json::Value) {
-        if self.quiet {
-            return;
-        }
         let filtered = self.filter_fields(value.clone());
         println!("{}", self.serialize_json(&filtered));
     }
@@ -83,11 +67,7 @@ impl Output {
     }
 
     fn serialize_json<T: Serialize>(&self, data: &T) -> String {
-        if self.pretty {
-            serde_json::to_string_pretty(data).unwrap()
-        } else {
-            serde_json::to_string(data).unwrap()
-        }
+        serde_json::to_string_pretty(data).unwrap()
     }
 
     fn filter_fields(&self, value: serde_json::Value) -> serde_json::Value {
@@ -116,31 +96,22 @@ impl Output {
                 "error": err.to_string(),
                 "code": err.code(),
             });
-            let s = if self.pretty {
-                serde_json::to_string_pretty(&obj).unwrap()
-            } else {
-                serde_json::to_string(&obj).unwrap()
-            };
-            eprintln!("{s}");
+            eprintln!("{}", serde_json::to_string_pretty(&obj).unwrap());
         } else {
             eprintln!("{} {}", "\u{2717}".red(), err);
         }
     }
 
     pub fn success(&self, msg: &str) {
-        if !self.quiet && !self.json {
+        if !self.json {
             println!("{} {}", "\u{2713}".green(), msg);
         }
     }
 
     pub fn status(&self, msg: &str) {
-        if !self.quiet && !self.json {
+        if !self.json {
             eprintln!("{}", msg.dimmed());
         }
-    }
-
-    pub fn error(&self, msg: &str) {
-        eprintln!("{} {}", "\u{2717}".red(), msg);
     }
 
     pub fn is_json(&self) -> bool {

@@ -1,6 +1,49 @@
-use crate::auth::{self, Tokens};
+use std::env;
+
+use super::output::Output;
 use crate::error::Result;
-use crate::output::Output;
+use crate::garmin::auth::{self, Tokens};
+use chrono::DateTime;
+use clap::Subcommand;
+
+#[derive(Subcommand)]
+pub enum AuthCommands {
+    /// Log in to Garmin Connect (reads GARMIN_EMAIL / GARMIN_PASSWORD env vars, or prompts)
+    Login,
+    /// Show authentication status
+    Status,
+    /// Log out (delete stored tokens)
+    Logout,
+}
+
+pub async fn run(command: AuthCommands, output: &Output) -> Result<()> {
+    match command {
+        AuthCommands::Login => login(output).await,
+        AuthCommands::Status => status(output),
+        AuthCommands::Logout => logout(output),
+    }
+}
+
+async fn login(output: &Output) -> Result<()> {
+    let email = env::var("GARMIN_EMAIL")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .map_or_else(|| prompt("Email"), Ok)?;
+    let pass = env::var("GARMIN_PASSWORD")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .map_or_else(prompt_password, Ok)?;
+
+    output.status("Logging in to Garmin Connect...");
+    let tokens = auth::login(&email, &pass).await?;
+
+    let expires = DateTime::from_timestamp(tokens.oauth2.expires_at, 0)
+        .map(|dt| dt.format("%Y-%m-%d %H:%M UTC").to_string())
+        .unwrap_or_else(|| "unknown".into());
+
+    output.success(&format!("Logged in. Token expires {expires}"));
+    Ok(())
+}
 
 fn prompt(label: &str) -> std::io::Result<String> {
     eprint!("{label}: ");
@@ -13,31 +56,10 @@ fn prompt_password() -> std::io::Result<String> {
     rpassword::prompt_password("Password: ")
 }
 
-pub async fn login(output: &Output) -> Result<()> {
-    let email = std::env::var("GARMIN_EMAIL")
-        .ok()
-        .filter(|s| !s.is_empty())
-        .map_or_else(|| prompt("Email"), Ok)?;
-    let pass = std::env::var("GARMIN_PASSWORD")
-        .ok()
-        .filter(|s| !s.is_empty())
-        .map_or_else(prompt_password, Ok)?;
-
-    output.status("Logging in to Garmin Connect...");
-    let tokens = auth::login(&email, &pass).await?;
-
-    let expires = chrono::DateTime::from_timestamp(tokens.oauth2.expires_at, 0)
-        .map(|dt| dt.format("%Y-%m-%d %H:%M UTC").to_string())
-        .unwrap_or_else(|| "unknown".into());
-
-    output.success(&format!("Logged in. Token expires {expires}"));
-    Ok(())
-}
-
-pub fn status(output: &Output) -> Result<()> {
+fn status(output: &Output) -> Result<()> {
     let tokens = Tokens::load()?;
     let expired = tokens.oauth2.is_expired();
-    let expires = chrono::DateTime::from_timestamp(tokens.oauth2.expires_at, 0)
+    let expires = DateTime::from_timestamp(tokens.oauth2.expires_at, 0)
         .map(|dt| dt.format("%Y-%m-%d %H:%M UTC").to_string())
         .unwrap_or_else(|| "unknown".into());
 
@@ -58,8 +80,8 @@ pub fn status(output: &Output) -> Result<()> {
     Ok(())
 }
 
-pub fn logout(output: &Output) -> Result<()> {
+fn logout(output: &Output) -> Result<()> {
     Tokens::delete()?;
-    output.success("Logged out. Tokens deleted.");
+    output.success("Logged out. Tokens deleted");
     Ok(())
 }

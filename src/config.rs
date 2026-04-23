@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 pub fn config_dir() -> PathBuf {
     dirs::config_dir()
-        .or_else(|| dirs::home_dir().map(|h| h.join(".config")))
+        .or_else(|| dirs::home_dir().map(|home| home.join(".config")))
         .unwrap_or_else(|| PathBuf::from("/tmp"))
         .join("garmin")
 }

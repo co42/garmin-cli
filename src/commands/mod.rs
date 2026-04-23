@@ -7,6 +7,8 @@ pub mod courses;
 pub mod devices;
 pub mod gear;
 pub mod health;
+pub mod helpers;
+pub mod output;
 pub mod profile;
 pub mod raw;
 pub mod records;

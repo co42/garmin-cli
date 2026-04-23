@@ -1,9 +1,16 @@
 use thiserror::Error;
 
+pub type Result<T> = std::result::Result<T, Error>;
+
 #[derive(Error, Debug)]
 pub enum Error {
-    #[error("API error: {0}")]
-    Api(String),
+    /// CLI argument / flag validation failure surfaced to the user.
+    #[error("Usage: {0}")]
+    Usage(String),
+
+    /// Domain-level "looked it up, it isn't there".
+    #[error("Not found: {0}")]
+    NotFound(String),
 
     #[error("Auth error: {0}")]
     Auth(String),
@@ -11,11 +18,12 @@ pub enum Error {
     #[error("Not authenticated - run `garmin auth login`")]
     NotAuthenticated,
 
-    #[error("MFA required")]
-    MfaRequired,
+    /// Non-2xx response from the Garmin API.
+    #[error("API error {status}: {body}")]
+    Http { status: u16, body: String },
 
     #[error(transparent)]
-    Http(#[from] reqwest::Error),
+    Transport(#[from] reqwest::Error),
 
     #[error(transparent)]
     Json(#[from] serde_json::Error),
@@ -31,26 +39,13 @@ impl Error {
     /// Machine-readable error code for structured JSON output.
     pub fn code(&self) -> &str {
         match self {
-            Error::Auth(_) | Error::NotAuthenticated | Error::MfaRequired => "auth",
-            Error::Api(msg) if msg.starts_with("404") => "not_found",
-            Error::Api(msg) if msg.starts_with("429") => "rate_limit",
-            Error::Api(_) => "api",
-            Error::Http(_) => "api",
-            Error::Json(_) => "generic",
-            Error::Io(_) => "generic",
-            Error::Other(_) => "generic",
-        }
-    }
-
-    /// Process exit code.
-    pub fn exit_code(&self) -> i32 {
-        match self.code() {
-            "auth" => 2,
-            "not_found" => 3,
-            "rate_limit" => 4,
-            _ => 1,
+            Error::Usage(_) => "usage",
+            Error::NotFound(_) => "not_found",
+            Error::Auth(_) | Error::NotAuthenticated => "auth",
+            Error::Http { status: 404, .. } => "not_found",
+            Error::Http { status: 429, .. } => "rate_limit",
+            Error::Http { .. } | Error::Transport(_) => "api",
+            Error::Json(_) | Error::Io(_) | Error::Other(_) => "generic",
         }
     }
 }
-
-pub type Result<T> = std::result::Result<T, Error>;

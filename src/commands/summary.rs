@@ -1,121 +1,23 @@
-use crate::client::GarminClient;
+use super::helpers::{DateRangeArgs, fetch_range};
+use super::output::Output;
 use crate::error::Result;
-use crate::output::{HumanReadable, LABEL_WIDTH, Output};
-use colored::Colorize;
-use serde::Serialize;
+use crate::garmin::{DailySummary, GarminClient};
 
-fn today() -> String {
-    chrono::Local::now().format("%Y-%m-%d").to_string()
-}
+pub async fn run(range: DateRangeArgs, output: &Output) -> Result<()> {
+    let client = GarminClient::new(super::helpers::require_auth()?)?;
+    let (start, end) = range.resolve(1)?;
 
-#[derive(Debug, Serialize)]
-pub struct DailySummary {
-    pub date: String,
-    pub total_steps: Option<u64>,
-    pub total_distance_meters: Option<f64>,
-    pub active_calories: Option<f64>,
-    pub total_calories: Option<f64>,
-    pub resting_heart_rate: Option<u32>,
-    pub max_heart_rate: Option<u32>,
-    pub avg_stress: Option<f64>,
-    pub max_stress: Option<u32>,
-    pub body_battery_high: Option<u32>,
-    pub body_battery_low: Option<u32>,
-    pub sleep_seconds: Option<u64>,
-    pub floors_ascended: Option<u32>,
-    pub floors_descended: Option<u32>,
-    pub intensity_minutes: Option<u32>,
-}
-
-impl HumanReadable for DailySummary {
-    fn print_human(&self) {
-        println!("{}", self.date.bold());
-        if let Some(v) = self.total_steps {
-            println!("  {:<LABEL_WIDTH$}{}", "Steps:", v.to_string().cyan());
+    let mut summaries: Vec<DailySummary> = fetch_range(start, end, |ds| {
+        let client = &client;
+        async move {
+            let mut s = client.daily_summary(&ds).await?;
+            // API sometimes returns empty `calendarDate`; prefer the requested date.
+            s.calendar_date = ds;
+            Ok(s)
         }
-        if let Some(v) = self.total_distance_meters {
-            println!("  {:<LABEL_WIDTH$}{:.1} km", "Distance:", v / 1000.0);
-        }
-        if let Some(v) = self.active_calories {
-            println!("  {:<LABEL_WIDTH$}{:.0}", "Active cal:", v);
-        }
-        if let Some(v) = self.total_calories {
-            println!("  {:<LABEL_WIDTH$}{:.0}", "Total cal:", v);
-        }
-        if let Some(v) = self.resting_heart_rate {
-            println!("  {:<LABEL_WIDTH$}{} bpm", "Resting HR:", v);
-        }
-        if let Some(v) = self.avg_stress {
-            let max_str = self
-                .max_stress
-                .map(|m| format!("  Max: {m}"))
-                .unwrap_or_default();
-            println!("  {:<LABEL_WIDTH$}{:.0}{}", "Stress:", v, max_str);
-        }
-        if let (Some(lo), Some(hi)) = (self.body_battery_low, self.body_battery_high) {
-            println!("  {:<LABEL_WIDTH$}{lo}\u{2013}{hi}", "Body battery:");
-        }
-        if let Some(v) = self.sleep_seconds {
-            let h = v / 3600;
-            let m = (v % 3600) / 60;
-            println!("  {:<LABEL_WIDTH$}{h}h {m:02}m", "Sleep:");
-        }
-        if let Some(v) = self.floors_ascended {
-            println!("  {:<LABEL_WIDTH$}{v}", "Floors up:");
-        }
-        if let Some(v) = self.intensity_minutes {
-            println!("  {:<LABEL_WIDTH$}{v}", "Intensity min:");
-        }
-    }
-}
-
-pub async fn summary(
-    client: &GarminClient,
-    output: &Output,
-    date: Option<&str>,
-    days: Option<u32>,
-) -> Result<()> {
-    let display_name = client.display_name().await?;
-    let end_date = date.map(String::from).unwrap_or_else(today);
-    let days = days.unwrap_or(1);
-
-    let mut summaries = Vec::new();
-    let end = chrono::NaiveDate::parse_from_str(&end_date, "%Y-%m-%d")
-        .map_err(|e| crate::error::Error::Api(format!("Invalid date: {e}")))?;
-
-    for i in 0..days {
-        let d = end - chrono::Duration::days(i as i64);
-        let date_str = d.format("%Y-%m-%d").to_string();
-        let path = format!(
-            "/usersummary-service/usersummary/daily/{display_name}?calendarDate={date_str}"
-        );
-        let v: serde_json::Value = client.get_json(&path).await?;
-
-        summaries.push(DailySummary {
-            date: date_str,
-            total_steps: v["totalSteps"].as_u64(),
-            total_distance_meters: v["totalDistanceMeters"].as_f64(),
-            active_calories: v["activeKilocalories"].as_f64(),
-            total_calories: v["totalKilocalories"].as_f64(),
-            resting_heart_rate: v["restingHeartRate"].as_u64().map(|v| v as u32),
-            max_heart_rate: v["maxHeartRate"].as_u64().map(|v| v as u32),
-            avg_stress: v["averageStressLevel"].as_f64(),
-            max_stress: v["maxStressLevel"].as_u64().map(|v| v as u32),
-            body_battery_high: v["bodyBatteryHighestValue"].as_u64().map(|v| v as u32),
-            body_battery_low: v["bodyBatteryLowestValue"].as_u64().map(|v| v as u32),
-            sleep_seconds: v["sleepingSeconds"].as_u64(),
-            floors_ascended: v["floorsAscended"].as_u64().map(|v| v as u32),
-            floors_descended: v["floorsDescended"].as_u64().map(|v| v as u32),
-            intensity_minutes: {
-                let moderate = v["moderateIntensityMinutes"].as_u64().unwrap_or(0);
-                let vigorous = v["vigorousIntensityMinutes"].as_u64().unwrap_or(0);
-                let total = moderate + vigorous;
-                if total > 0 { Some(total as u32) } else { None }
-            },
-        });
-    }
-
-    summaries.reverse();
+    })
+    .await?;
+    summaries.sort_by(|a, b| b.calendar_date.cmp(&a.calendar_date));
     output.print_list(&summaries, "Daily Summary");
     Ok(())
 }
