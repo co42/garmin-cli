@@ -233,10 +233,13 @@ Coach workouts use UUIDs (not numeric IDs). In human mode `list` filters out `FO
 ```bash
 garmin calendar list [--year 2026] [--month 3]   # View a month
 garmin calendar list --weeks 4                    # Next N weeks (spans months)
+garmin calendar events [--days N | --from DATE --to DATE] [--limit 20] [--include-past]
 garmin calendar delete <ID>                       # Remove a scheduled entry (calendar entry ID, not workout ID)
 ```
 
 Human output tags each item by source: `[coach <UUID>]` for Garmin Coach workouts, `[workout <ID>]` for user-created workouts, `[activity <ID>]` for completed activities, or `[type]` for other items.
+
+`events` lists upcoming user events (races, primary plan event, scheduled events). With no flag it returns up to `--limit` events from today; `--days N` / `--from DATE --to DATE` narrow the window (the API only filters on `startDate`, the end is applied client-side). `--include-past` drops the start filter to surface past events too. Output uses the same `TargetEvent` shape as `coach event`, with extra fields populated from this list endpoint: `is_race`, `is_primary_event`, `course_id`, `url`, `registration_url`, `note`, `latitude`, `longitude`, `predicted_race_speed_mps`, `projected_race_speed_mps`, `enrollment_time`.
 
 ### Gear
 

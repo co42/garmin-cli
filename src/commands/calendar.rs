@@ -1,8 +1,13 @@
+use super::helpers::{DateRangeArgs, today};
 use super::output::Output;
 use crate::error::Result;
-use crate::garmin::{CalendarItem, GarminClient};
+use crate::garmin::{CalendarItem, GarminClient, TargetEvent};
 use chrono::{Datelike, NaiveDate};
 use clap::Subcommand;
+
+/// Default `limit` for `calendar events`. Mirrors the value Garmin's web UI uses
+/// when listing upcoming events; enough headroom for any reasonable race calendar.
+const DEFAULT_EVENTS_LIMIT: u32 = 20;
 
 #[derive(Subcommand)]
 pub enum CalendarCommands {
@@ -18,6 +23,17 @@ pub enum CalendarCommands {
         #[arg(long)]
         weeks: Option<u32>,
     },
+    /// List upcoming events (races, primary plan event, scheduled events)
+    Events {
+        #[command(flatten)]
+        range: DateRangeArgs,
+        /// Maximum number of events to return
+        #[arg(long, default_value_t = DEFAULT_EVENTS_LIMIT)]
+        limit: u32,
+        /// Include past events (drops the default `startDate=today` filter)
+        #[arg(long)]
+        include_past: bool,
+    },
     /// Remove a scheduled workout from the calendar
     Delete {
         /// Calendar entry ID
@@ -29,6 +45,11 @@ pub async fn run(command: CalendarCommands, output: &Output) -> Result<()> {
     let client = GarminClient::new(super::helpers::require_auth()?)?;
     match command {
         CalendarCommands::List { year, month, weeks } => list(&client, output, year, month, weeks).await,
+        CalendarCommands::Events {
+            range,
+            limit,
+            include_past,
+        } => events(&client, output, range, limit, include_past).await,
         CalendarCommands::Delete { id } => delete(&client, output, id).await,
     }
 }
@@ -90,6 +111,43 @@ async fn list(
     }
 
     Ok(())
+}
+
+async fn events(
+    client: &GarminClient,
+    output: &Output,
+    range: DateRangeArgs,
+    limit: u32,
+    include_past: bool,
+) -> Result<()> {
+    // Resolve the window. With no flags: upcoming from today, no end filter.
+    // With flags: explicit window; we send `startDate` server-side and trim
+    // `> end` client-side (the API only supports startDate).
+    // `--include-past` drops the start filter entirely.
+    let (start, end): (Option<NaiveDate>, Option<NaiveDate>) = match range.resolve_optional()? {
+        Some((s, e)) => (Some(s), Some(e)),
+        None => (Some(today()), None),
+    };
+
+    let api_start = if include_past { None } else { start };
+    let mut items: Vec<TargetEvent> = client.list_events(None, api_start, Some(limit)).await?;
+
+    if let Some(end_d) = end {
+        let end_str = end_d.format("%Y-%m-%d").to_string();
+        items.retain(|e| e.date.as_str() <= end_str.as_str());
+    }
+
+    let title = match (start, end) {
+        (Some(s), Some(e)) => format!("Events {} to {}", ymd(s), ymd(e)),
+        (Some(s), None) if !include_past => format!("Events from {}", ymd(s)),
+        _ => "Events".to_string(),
+    };
+    output.print_list(&items, &title);
+    Ok(())
+}
+
+fn ymd(d: NaiveDate) -> String {
+    d.format("%Y-%m-%d").to_string()
 }
 
 async fn delete(client: &GarminClient, output: &Output, id: u64) -> Result<()> {

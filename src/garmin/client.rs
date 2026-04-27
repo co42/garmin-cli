@@ -619,16 +619,6 @@ impl GarminClient {
         Ok(res.training_plan_list)
     }
 
-    pub async fn plan_events(&self, plan_id: u64) -> Result<Vec<TargetEvent>> {
-        let path = format!("/calendar-service/events?trainingPlanId={plan_id}");
-        self.get(&path).await
-    }
-
-    pub async fn calendar_event(&self, event_id: u64) -> Result<TargetEvent> {
-        let path = format!("/calendar-service/event/{event_id}");
-        self.get(&path).await
-    }
-
     pub async fn event_projections(
         &self,
         event_id: u64,
@@ -665,6 +655,35 @@ impl GarminClient {
         let path = format!("/calendar-service/year/{year}/month/{api_month}");
         let resp: CalendarMonth = self.get(&path).await?;
         Ok(resp.into_items())
+    }
+
+    /// User's events (races, primary plan event, …) from `/calendar-service/events`.
+    /// Used by both `coach event` (filter by plan) and `calendar events` (filter by date).
+    /// `pageIndex=1` and `sortOrder=eventDate_asc` are always set; both call sites want
+    /// chronological order from the start of their window.
+    pub async fn list_events(
+        &self,
+        training_plan_id: Option<u64>,
+        start_date: Option<NaiveDate>,
+        limit: Option<u32>,
+    ) -> Result<Vec<TargetEvent>> {
+        let mut params: Vec<String> = vec!["pageIndex=1".into(), "sortOrder=eventDate_asc".into()];
+        if let Some(id) = training_plan_id {
+            params.push(format!("trainingPlanId={id}"));
+        }
+        if let Some(d) = start_date {
+            params.push(format!("startDate={}", ymd(d)));
+        }
+        if let Some(n) = limit {
+            params.push(format!("limit={n}"));
+        }
+        let path = format!("/calendar-service/events?{}", params.join("&"));
+        self.get(&path).await
+    }
+
+    pub async fn calendar_event(&self, event_id: u64) -> Result<TargetEvent> {
+        let path = format!("/calendar-service/event/{event_id}");
+        self.get(&path).await
     }
 
     pub async fn delete_calendar_entry(&self, id: u64) -> Result<()> {

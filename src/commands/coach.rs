@@ -81,7 +81,7 @@ async fn plan_list(client: &GarminClient, output: &Output) -> Result<()> {
 
 async fn event(client: &GarminClient, output: &Output, range: DateRangeArgs) -> Result<()> {
     let plan_id = active_plan_id(client).await?;
-    let events = client.plan_events(plan_id).await?;
+    let events = client.list_events(Some(plan_id), None, None).await?;
     let target = pick_primary(events).ok_or_else(|| Error::NotFound("no target event for active plan".into()))?;
     let event_id = target.id;
 

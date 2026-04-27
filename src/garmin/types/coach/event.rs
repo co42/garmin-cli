@@ -21,12 +21,23 @@ pub struct TargetEvent {
     pub start_time_local: Option<String>,
     pub timezone: Option<String>,
     pub location: Option<String>,
+    pub latitude: Option<f64>,
+    pub longitude: Option<f64>,
     pub distance_meters: Option<f64>,
     pub goal_seconds: Option<f64>,
     pub predicted_race_time_seconds: Option<f64>,
     pub projected_race_time_seconds: Option<f64>,
+    pub predicted_race_speed_mps: Option<f64>,
+    pub projected_race_speed_mps: Option<f64>,
     pub is_primary_event: Option<bool>,
+    pub is_race: Option<bool>,
+    pub is_training_event: Option<bool>,
+    pub course_id: Option<u64>,
+    pub url: Option<String>,
+    pub registration_url: Option<String>,
+    pub note: Option<String>,
     pub training_plan_id: Option<u64>,
+    pub enrollment_time: Option<String>,
 }
 
 impl<'de> Deserialize<'de> for TargetEvent {
@@ -40,11 +51,20 @@ impl<'de> Deserialize<'de> for TargetEvent {
             event_type: Option<String>,
             event_time_local: Option<EventTime>,
             location: Option<String>,
+            location_start_point: Option<LocationPoint>,
             completion_target: Option<UnitValue>,
             event_customization: Option<EventCustomization>,
+            #[serde(default)]
+            race: Option<bool>,
+            course_id: Option<u64>,
+            url: Option<String>,
+            registration_url: Option<String>,
+            note: Option<String>,
         }
         let r = Raw::deserialize(d)?;
         let cust = r.event_customization;
+        // Garmin returns "" for missing notes; collapse to None so JSON output stays clean.
+        let note = r.note.filter(|s| !s.is_empty());
         Ok(TargetEvent {
             id: r.id,
             name: r.event_name,
@@ -53,6 +73,8 @@ impl<'de> Deserialize<'de> for TargetEvent {
             start_time_local: r.event_time_local.as_ref().map(|t| t.start_time_hh_mm.clone()),
             timezone: r.event_time_local.as_ref().map(|t| t.time_zone_id.clone()),
             location: r.location,
+            latitude: r.location_start_point.as_ref().map(|p| p.lat),
+            longitude: r.location_start_point.as_ref().map(|p| p.lon),
             distance_meters: r.completion_target.as_ref().and_then(unit_value_to_meters),
             goal_seconds: cust
                 .as_ref()
@@ -60,9 +82,58 @@ impl<'de> Deserialize<'de> for TargetEvent {
                 .and_then(unit_value_to_seconds),
             predicted_race_time_seconds: cust.as_ref().and_then(|c| c.predicted_race_time_seconds),
             projected_race_time_seconds: cust.as_ref().and_then(|c| c.projected_race_time_seconds),
+            predicted_race_speed_mps: cust.as_ref().and_then(|c| c.predicted_race_speed_mps),
+            projected_race_speed_mps: cust.as_ref().and_then(|c| c.projected_race_speed_mps),
             is_primary_event: cust.as_ref().map(|c| c.is_primary_event),
+            is_race: r.race,
+            is_training_event: cust.as_ref().and_then(|c| c.is_training_event),
+            course_id: r.course_id,
+            url: r.url,
+            registration_url: r.registration_url,
+            note,
             training_plan_id: cust.as_ref().and_then(|c| c.training_plan_id),
+            enrollment_time: cust.as_ref().and_then(|c| c.enrollment_time.clone()),
         })
+    }
+}
+
+impl HumanReadable for TargetEvent {
+    fn print_human(&self) {
+        println!("{}  {}", self.date.bold(), self.name);
+        let kind = self.event_type.as_deref().unwrap_or("event");
+        let race_tag = if self.is_race == Some(true) {
+            "  race".red().to_string()
+        } else {
+            String::new()
+        };
+        let primary_tag = if self.is_primary_event == Some(true) {
+            "  primary".cyan().to_string()
+        } else {
+            String::new()
+        };
+        println!("  {:<LABEL_WIDTH$}{kind}{race_tag}{primary_tag}", "Type:");
+        if let Some(m) = self.distance_meters {
+            println!("  {:<LABEL_WIDTH$}{:.2} km", "Distance:", m / 1000.0);
+        }
+        let when = format_when(self, true);
+        if !when.is_empty() {
+            println!("  {:<LABEL_WIDTH$}{when}", "When:");
+        }
+        if let Some(ref loc) = self.location {
+            println!("  {:<LABEL_WIDTH$}{loc}", "Where:");
+        }
+        if let Some(id) = self.course_id {
+            println!("  {:<LABEL_WIDTH$}#{id}", "Course:");
+        }
+        if let (Some(goal_secs), Some(m)) = (self.goal_seconds, self.distance_meters) {
+            println!("  {:<LABEL_WIDTH$}{}", "Goal:", format_goal(goal_secs, m));
+        }
+        if let Some(ref url) = self.url {
+            println!("  {:<LABEL_WIDTH$}{}", "Link:", url.dimmed());
+        }
+        if let Some(ref note) = self.note {
+            println!("  {:<LABEL_WIDTH$}{note}", "Note:");
+        }
     }
 }
 
@@ -71,6 +142,12 @@ impl<'de> Deserialize<'de> for TargetEvent {
 struct EventTime {
     start_time_hh_mm: String,
     time_zone_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct LocationPoint {
+    lat: f64,
+    lon: f64,
 }
 
 /// Used for both `completionTarget` (distance, km/mi) and `customGoal` (time,
@@ -100,11 +177,17 @@ struct EventCustomization {
     custom_goal: Option<UnitValue>,
     #[serde(default)]
     is_primary_event: bool,
+    is_training_event: Option<bool>,
     training_plan_id: Option<u64>,
     #[serde(rename(deserialize = "projectedRaceTimeDurationSeconds"))]
     projected_race_time_seconds: Option<f64>,
     #[serde(rename(deserialize = "predictedRaceTimeDurationSeconds"))]
     predicted_race_time_seconds: Option<f64>,
+    #[serde(rename(deserialize = "projectedRaceSpeed"))]
+    projected_race_speed_mps: Option<f64>,
+    #[serde(rename(deserialize = "predictedRaceSpeed"))]
+    predicted_race_speed_mps: Option<f64>,
+    enrollment_time: Option<String>,
 }
 
 /// Aggregate rendered by `coach event`. JSON shape is stable across modes:
