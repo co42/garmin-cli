@@ -20,6 +20,9 @@ pub enum CoachCommands {
     },
     /// Show the target event and projection history
     Event {
+        /// Specific event ID. Defaults to the active plan's primary event.
+        #[arg(long)]
+        event_id: Option<u64>,
         #[command(flatten)]
         range: DateRangeArgs,
     },
@@ -40,7 +43,7 @@ pub async fn run(command: CoachCommands, output: &Output) -> Result<()> {
         CoachCommands::Plan {
             cmd: Some(PlanCmd::List),
         } => plan_list(&client, output).await,
-        CoachCommands::Event { range } => event(&client, output, range).await,
+        CoachCommands::Event { event_id, range } => event(&client, output, event_id, range).await,
     }
 }
 
@@ -79,11 +82,27 @@ async fn plan_list(client: &GarminClient, output: &Output) -> Result<()> {
     Ok(())
 }
 
-async fn event(client: &GarminClient, output: &Output, range: DateRangeArgs) -> Result<()> {
-    let plan_id = active_plan_id(client).await?;
-    let events = client.list_events(Some(plan_id), None, None).await?;
-    let target = pick_primary(events).ok_or_else(|| Error::NotFound("no target event for active plan".into()))?;
-    let event_id = target.id;
+async fn event(
+    client: &GarminClient,
+    output: &Output,
+    event_id_override: Option<u64>,
+    range: DateRangeArgs,
+) -> Result<()> {
+    // Two modes:
+    //   1. Caller passes `--event-id`: skip the plan lookup, fetch that event
+    //      directly. The plan_id/plan_name fields stay None — the event may
+    //      not be tied to a plan at all.
+    //   2. No flag: original behavior — find the active plan's primary event.
+    let (event_id, plan_id) = match event_id_override {
+        Some(id) => (id, None),
+        None => {
+            let plan_id = active_plan_id(client).await?;
+            let events = client.list_events(Some(plan_id), None, None).await?;
+            let target =
+                pick_primary(events).ok_or_else(|| Error::NotFound("no target event for active plan".into()))?;
+            (target.id, Some(plan_id))
+        }
+    };
 
     let (start, end) = range.resolve(1)?;
     let (detail, mut projections) = tokio::try_join!(
@@ -95,11 +114,14 @@ async fn event(client: &GarminClient, output: &Output, range: DateRangeArgs) -> 
 
     // Best-effort lookup of the plan name for the header. Don't fail the
     // command if the plan endpoint errors — the event itself rendered fine.
-    let plan_name = client.training_plan(plan_id).await.ok().map(|p| p.name);
+    let plan_name = match plan_id {
+        Some(id) => client.training_plan(id).await.ok().map(|p| p.name),
+        None => None,
+    };
 
     let ce = CoachEvent {
         event: detail,
-        plan_id: Some(plan_id),
+        plan_id,
         plan_name,
         projections,
     };

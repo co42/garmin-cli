@@ -686,6 +686,27 @@ impl GarminClient {
         self.get(&path).await
     }
 
+    /// Same endpoint as `calendar_event` but returns the raw nested JSON
+    /// (preserving every field Garmin sends). Used as the GET half of
+    /// update round-trips, since PUT expects the full original body.
+    pub async fn calendar_event_raw(&self, event_id: u64) -> Result<Value> {
+        let path = format!("/calendar-service/event/{event_id}");
+        self.raw_request(Method::GET, &path, None).await
+    }
+
+    /// PUT the full event body back to Garmin. Mutations are done by
+    /// fetching with `calendar_event_raw`, mutating the returned value, and
+    /// passing it here — the API rejects partial bodies.
+    pub async fn update_calendar_event(&self, event_id: u64, body: &Value) -> Result<()> {
+        let path = format!("/calendar-service/event/{event_id}");
+        self.void(Method::PUT, &path, Some(body)).await
+    }
+
+    pub async fn delete_calendar_event(&self, event_id: u64) -> Result<()> {
+        let path = format!("/calendar-service/event/{event_id}");
+        self.void(Method::DELETE, &path, None).await
+    }
+
     pub async fn delete_calendar_entry(&self, id: u64) -> Result<()> {
         let path = format!("/workout-service/schedule/{id}");
         self.void(Method::DELETE, &path, None).await

@@ -221,12 +221,12 @@ garmin coach list                                    # Adaptive workouts
 garmin coach get <UUID>                              # Workout detail + step structure
 garmin coach plan                                    # Active plan: phases, task list, supplemental sports
 garmin coach plan list                               # All training plans (active + completed)
-garmin coach event [--days N | --from DATE --to DATE]  # Target event + projection history (default: today)
+garmin coach event [--event-id ID] [--days N | --from DATE --to DATE]  # Target event + projection history
 ```
 
 Coach workouts use UUIDs (not numeric IDs). In human mode `list` filters out `FORCED_REST` and `EASY_WEEK_LOAD_REST` entries (they carry no useful detail); JSON mode keeps them.
 
-`coach plan` hits the adaptive endpoint when available and falls back to the non-adaptive endpoint on 404 (phases and tasks will be empty in that case). `coach event` returns the same JSON shape regardless of `--days` — `projections` is an array of 1 for the default snapshot, N for history mode. Key fields on `event.event_customization`: `projected_race_time_seconds`, `predicted_race_time_seconds`, `projected_race_speed_mps`, `predicted_race_speed_mps`. Each entry in `projections`: `calendar_date`, `projection_race_time_seconds`, `predicted_race_time_seconds`, `upper/lower_bound_projection_race_time_seconds`, `speed_projection_mps`, `event_race_predictions_feedback_phrase`.
+`coach plan` hits the adaptive endpoint when available and falls back to the non-adaptive endpoint on 404 (phases and tasks will be empty in that case). `coach event` returns the same JSON shape regardless of `--days` — `projections` is an array of 1 for the default snapshot, N for history mode. Without `--event-id` it targets the active plan's primary event; pass `--event-id <ID>` (from `garmin calendar events`) to fetch any event's projection history. Key fields on `event.event_customization`: `projected_race_time_seconds`, `predicted_race_time_seconds`, `projected_race_speed_mps`, `predicted_race_speed_mps`. Each entry in `projections`: `calendar_date`, `projection_race_time_seconds`, `predicted_race_time_seconds`, `upper/lower_bound_projection_race_time_seconds`, `speed_projection_mps`, `event_race_predictions_feedback_phrase`.
 
 ### Calendar
 
@@ -234,12 +234,16 @@ Coach workouts use UUIDs (not numeric IDs). In human mode `list` filters out `FO
 garmin calendar list [--year 2026] [--month 3]   # View a month
 garmin calendar list --weeks 4                    # Next N weeks (spans months)
 garmin calendar events [--days N | --from DATE --to DATE] [--limit 20] [--include-past]
-garmin calendar delete <ID>                       # Remove a scheduled entry (calendar entry ID, not workout ID)
+garmin calendar events delete <ID>                # Remove an event from the calendar
+garmin calendar events update <ID> --priority primary|secondary|none
+garmin calendar delete <ID>                       # Remove a scheduled workout entry (NOT an event — see `events delete`)
 ```
 
 Human output tags each item by source: `[coach <UUID>]` for Garmin Coach workouts, `[workout <ID>]` for user-created workouts, `[activity <ID>]` for completed activities, or `[type]` for other items.
 
 `events` lists upcoming user events (races, primary plan event, scheduled events). With no flag it returns up to `--limit` events from today; `--days N` / `--from DATE --to DATE` narrow the window (the API only filters on `startDate`, the end is applied client-side). `--include-past` drops the start filter to surface past events too. Output uses the same `TargetEvent` shape as `coach event`, with extra fields populated from this list endpoint: `is_race`, `is_primary_event`, `course_id`, `url`, `registration_url`, `note`, `latitude`, `longitude`, `predicted_race_speed_mps`, `projected_race_speed_mps`, `enrollment_time`.
+
+`events update --priority` is a tri-state shortcut over Garmin's two underlying booleans (`isPrimaryEvent`, `isTrainingEvent`): `primary` → `(true, true)`, `secondary` → `(false, true)`, `none` → `(false, false)`. `isTrainingEvent=true` is Garmin's "I'm training for this" flag — set on plan targets and on any secondary race the user is actively training toward. The CLI fetches the event, mutates only those two fields, and PUTs the full body back — Garmin rejects partial updates.
 
 ### Gear
 

@@ -1,9 +1,9 @@
 use super::helpers::{DateRangeArgs, today};
 use super::output::Output;
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::garmin::{CalendarItem, GarminClient, TargetEvent};
 use chrono::{Datelike, NaiveDate};
-use clap::Subcommand;
+use clap::{Subcommand, ValueEnum};
 
 /// Default `limit` for `calendar events`. Mirrors the value Garmin's web UI uses
 /// when listing upcoming events; enough headroom for any reasonable race calendar.
@@ -23,8 +23,13 @@ pub enum CalendarCommands {
         #[arg(long)]
         weeks: Option<u32>,
     },
-    /// List upcoming events (races, primary plan event, scheduled events)
+    /// Manage upcoming events (races, primary plan event, scheduled events).
+    /// With no subcommand, lists events; subcommands below mutate state.
     Events {
+        #[command(subcommand)]
+        cmd: Option<EventsCmd>,
+        // List options also live at the parent so `garmin calendar events`
+        // (no subcommand) keeps working.
         #[command(flatten)]
         range: DateRangeArgs,
         /// Maximum number of events to return
@@ -41,15 +46,67 @@ pub enum CalendarCommands {
     },
 }
 
+#[derive(Subcommand)]
+pub enum EventsCmd {
+    /// Delete an event from the calendar
+    Delete {
+        /// Event ID (from `garmin calendar events`)
+        id: u64,
+    },
+    /// Update an event's priority (primary / secondary / none)
+    Update {
+        /// Event ID (from `garmin calendar events`)
+        id: u64,
+        /// Priority for this event:
+        /// - primary   = goal of the active plan (also marks training event)
+        /// - secondary = race target tracked with projections
+        /// - none      = training event, no race-time projections
+        #[arg(long, value_enum)]
+        priority: Priority,
+    },
+}
+
+#[derive(ValueEnum, Clone, Copy, Debug)]
+pub enum Priority {
+    Primary,
+    Secondary,
+    None,
+}
+
+impl Priority {
+    /// Map the CLI tri-state to Garmin's two booleans on `eventCustomization`.
+    /// `isTrainingEvent=true` is Garmin's "I'm training for this" flag — set on
+    /// the active plan's primary AND on any secondary race the user is
+    /// actively training toward. `isTrainingEvent=false` = just on the
+    /// calendar, no training adaptation.
+    fn to_flags(self) -> (bool, bool) {
+        match self {
+            // (isPrimaryEvent, isTrainingEvent)
+            Priority::Primary => (true, true),
+            Priority::Secondary => (false, true),
+            Priority::None => (false, false),
+        }
+    }
+}
+
 pub async fn run(command: CalendarCommands, output: &Output) -> Result<()> {
     let client = GarminClient::new(super::helpers::require_auth()?)?;
     match command {
         CalendarCommands::List { year, month, weeks } => list(&client, output, year, month, weeks).await,
         CalendarCommands::Events {
+            cmd: None,
             range,
             limit,
             include_past,
-        } => events(&client, output, range, limit, include_past).await,
+        } => events_list(&client, output, range, limit, include_past).await,
+        CalendarCommands::Events {
+            cmd: Some(EventsCmd::Delete { id }),
+            ..
+        } => events_delete(&client, output, id).await,
+        CalendarCommands::Events {
+            cmd: Some(EventsCmd::Update { id, priority }),
+            ..
+        } => events_update(&client, output, id, priority).await,
         CalendarCommands::Delete { id } => delete(&client, output, id).await,
     }
 }
@@ -113,7 +170,7 @@ async fn list(
     Ok(())
 }
 
-async fn events(
+async fn events_list(
     client: &GarminClient,
     output: &Output,
     range: DateRangeArgs,
@@ -143,6 +200,36 @@ async fn events(
         _ => "Events".to_string(),
     };
     output.print_list(&items, &title);
+    Ok(())
+}
+
+async fn events_delete(client: &GarminClient, output: &Output, id: u64) -> Result<()> {
+    client.delete_calendar_event(id).await?;
+    output.print_value(&serde_json::json!({
+        "eventId": id,
+        "deleted": true,
+    }));
+    Ok(())
+}
+
+async fn events_update(client: &GarminClient, output: &Output, id: u64, priority: Priority) -> Result<()> {
+    let mut body = client.calendar_event_raw(id).await?;
+    let cust = body
+        .get_mut("eventCustomization")
+        .and_then(|v| v.as_object_mut())
+        .ok_or_else(|| Error::Other(anyhow::anyhow!("event {id} missing eventCustomization")))?;
+    let (is_primary, is_training) = priority.to_flags();
+    cust.insert("isPrimaryEvent".into(), serde_json::Value::Bool(is_primary));
+    cust.insert("isTrainingEvent".into(), serde_json::Value::Bool(is_training));
+
+    client.update_calendar_event(id, &body).await?;
+    output.print_value(&serde_json::json!({
+        "eventId": id,
+        "priority": format!("{priority:?}").to_lowercase(),
+        "isPrimaryEvent": is_primary,
+        "isTrainingEvent": is_training,
+        "updated": true,
+    }));
     Ok(())
 }
 
