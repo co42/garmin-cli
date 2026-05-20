@@ -61,8 +61,9 @@ impl HumanReadable for Activity {
         if let Some(impact) = d.impact_load {
             lines.push(format!("  {:<LABEL_WIDTH$}{impact:.0}", "Impact Load:"));
         }
-        // Speed & cadence peaks (m/s → km/h for display).
-        if let Some(max) = d.max_speed_mps {
+        // Speed & cadence peaks (m/s → km/h for display). Max speed lives on
+        // the summary half now (also exposed by the list endpoint).
+        if let Some(max) = self.summary.max_speed_mps {
             lines.push(format!("  {:<LABEL_WIDTH$}{:.1} km/h", "Max Speed:", max * 3.6));
         }
         if let Some(max) = d.max_run_cadence {

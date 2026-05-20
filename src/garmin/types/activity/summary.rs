@@ -36,6 +36,15 @@ pub struct ActivitySummary {
     #[serde(rename(deserialize = "movingDuration"))]
     pub moving_duration_seconds: Option<f64>,
 
+    // Speeds (m/s). The list endpoint exposes averageSpeed + maxSpeed;
+    // averageMovingSpeed is detail-only and stays on `ActivityDetail`.
+    // These are separate from `avgGradeAdjustedSpeed` (below) which is a
+    // trail-specific equivalent-effort pace.
+    #[serde(rename(deserialize = "averageSpeed"))]
+    pub average_speed_mps: Option<f64>,
+    #[serde(rename(deserialize = "maxSpeed"))]
+    pub max_speed_mps: Option<f64>,
+
     // Training Effect & Load
     pub aerobic_training_effect: Option<f64>,
     pub anaerobic_training_effect: Option<f64>,

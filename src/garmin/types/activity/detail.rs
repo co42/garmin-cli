@@ -17,13 +17,12 @@ pub struct ActivityDetail {
     pub impact_load: Option<f64>,
     #[serde(rename(deserialize = "totalWork"))]
     pub total_work_joules: Option<f64>,
-    // Speeds (m/s; list has `averageSpeed` too but names differ by endpoint)
-    #[serde(rename(deserialize = "averageSpeed"))]
-    pub average_speed_mps: Option<f64>,
+    // averageSpeed + maxSpeed used to live here too, but the list endpoint
+    // also exposes them under the same names, so they moved to
+    // `ActivitySummary` to avoid serde `flatten` collisions when `Activity`
+    // merges summary + detail. averageMovingSpeed is detail-only.
     #[serde(rename(deserialize = "averageMovingSpeed"))]
     pub average_moving_speed_mps: Option<f64>,
-    #[serde(rename(deserialize = "maxSpeed"))]
-    pub max_speed_mps: Option<f64>,
     // Cadence peak
     pub max_run_cadence: Option<f64>,
     // Durations
